@@ -11,7 +11,7 @@ const BuildRequestSchema = z.object({ prompt: z.string().min(1) }).strict();
 // checked in services/builder.ts, not here, since that check needs the DB.
 const ResumeRequestSchema = z
   .object({
-    confirmedTools: z.array(z.object({ mcpServerId: z.string().min(1), toolName: z.string().min(1) })).optional(),
+    confirmedTools: z.array(z.object({ mcpServerId: z.string().min(1), toolName: z.string().min(1), role: z.string().min(1) })).optional(),
     credentials: z.array(z.object({ mcpServerId: z.string().min(1), values: z.record(z.string().min(1)) })).optional(),
   })
   .strict();

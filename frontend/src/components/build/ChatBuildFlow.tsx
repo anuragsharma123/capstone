@@ -100,7 +100,7 @@ export default function ChatBuildFlow({ builder }: Props) {
       setInput("");
       confirmTools(
         phase.threadId,
-        phase.matchedTools.map((t) => ({ mcpServerId: t.mcpServerId, toolName: t.toolName }))
+        phase.matchedTools.map((t) => ({ mcpServerId: t.mcpServerId, toolName: t.toolName, role: t.role }))
       );
       return;
     }

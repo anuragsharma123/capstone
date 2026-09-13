@@ -1,4 +1,5 @@
-// Agent Runtime — Rule 4's Approval Gate made real. Loads a persisted agent
+// Agent Runtime — Rule 4's Approval Gate made real, and Rule 8's
+// coordinator_specialist shape actually executed. Loads a persisted agent
 // config (services/builder.ts), gives it real MCP tools, and gates every
 // tool in `interrupt_before` behind langchain's humanInTheLoopMiddleware —
 // a purpose-built HITL middleware, not a hand-rolled interrupt() (that
@@ -6,6 +7,16 @@
 // per-tool-call approval). Uses createAgent (a real ReAct tool-calling
 // loop) rather than a custom StateGraph: this is exactly the scenario the
 // library's agent abstraction exists for.
+//
+// coordinator_specialist: each specialist is its own createAgent, wrapped
+// as a plain callable tool for the coordinator's createAgent. Specialists
+// carry no checkpointer and no HITL middleware — builder.ts guarantees a
+// specialist never holds a gated (non-read) tool (any write/destructive
+// pick gets reassigned to the coordinator at config-assembly time), so a
+// specialist call can never need to pause. Only the coordinator's own
+// createAgent ever interrupts, which means every pause still happens on
+// the one checkpointed thread this module already knows how to run/resume
+// — no untested nested-interrupt behavior.
 import { createAgent, tool, humanInTheLoopMiddleware, type HITLRequest, type Decision } from "langchain";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { Command, isInterrupted, INTERRUPT } from "@langchain/langgraph";
@@ -15,7 +26,7 @@ import { getConnectionAuth, ServiceError } from "../services/registry.js";
 import { attachAuth } from "../authSpec.js";
 import { callTool } from "../mcpClient.js";
 import { getCheckpointer } from "../checkpointer.js";
-import type { AgentConfigDoc } from "../services/builder.js";
+import type { AgentConfigDoc, AgentConfigTool, SpecialistConfig } from "../services/builder.js";
 
 interface RuntimeTool {
   mcpServerId: string;
@@ -25,10 +36,10 @@ interface RuntimeTool {
   inputSchema: unknown;
 }
 
-async function loadRuntimeTools(config: AgentConfigDoc): Promise<RuntimeTool[]> {
+async function loadRuntimeTools(tools: AgentConfigTool[]): Promise<RuntimeTool[]> {
   const pool = getPool();
-  const tools: RuntimeTool[] = [];
-  for (const t of config.tools) {
+  const runtimeTools: RuntimeTool[] = [];
+  for (const t of tools) {
     const { rows } = await pool.query<{ address: string; description: string | null; input_schema: unknown }>(
       `SELECT s.address, t.description, t.input_schema
        FROM mcp_tools t JOIN mcp_servers s ON s.id = t.server_id
@@ -37,9 +48,9 @@ async function loadRuntimeTools(config: AgentConfigDoc): Promise<RuntimeTool[]> 
     );
     const row = rows[0];
     if (!row) throw new ServiceError(500, `Tool '${t.tool_name}' in this agent's config no longer exists in the registry.`);
-    tools.push({ mcpServerId: t.mcp_server_id, toolName: t.tool_name, address: row.address, description: row.description, inputSchema: row.input_schema });
+    runtimeTools.push({ mcpServerId: t.mcp_server_id, toolName: t.tool_name, address: row.address, description: row.description, inputSchema: row.input_schema });
   }
-  return tools;
+  return runtimeTools;
 }
 
 function buildLangchainTools(runtimeTools: RuntimeTool[]) {
@@ -75,22 +86,76 @@ function buildLangchainTools(runtimeTools: RuntimeTool[]) {
   );
 }
 
-/** Only tools in `interrupt_before` pause; everything else auto-approves (per humanInTheLoopMiddleware's own default — no entry means auto-approved). Code-decided at build time (Rule 4); the Runtime just enforces what's already in the config. */
-function buildInterruptOn(config: AgentConfigDoc): Record<string, { allowedDecisions: Array<"approve" | "reject"> }> {
+/** Only tools named in `interruptBefore` pause; everything else auto-approves (per humanInTheLoopMiddleware's own default — no entry means auto-approved). Code-decided at build time (Rule 4); the Runtime just enforces what's already in the config. */
+function buildInterruptOn(interruptBefore: string[]): Record<string, { allowedDecisions: Array<"approve" | "reject"> }> {
   const entries: Record<string, { allowedDecisions: Array<"approve" | "reject"> }> = {};
-  for (const name of config.interrupt_before) {
+  for (const name of interruptBefore) {
     entries[name] = { allowedDecisions: ["approve", "reject"] };
   }
   return entries;
 }
 
-async function buildAgent(config: AgentConfigDoc) {
-  const runtimeTools = await loadRuntimeTools(config);
-  return createAgent({
+function lastMessageText(messages: BaseMessage[]): string {
+  const last = messages[messages.length - 1];
+  if (!last) return "";
+  if (typeof last.content === "string") return last.content;
+  if (!Array.isArray(last.content)) return "";
+  return last.content
+    .filter((block): block is { type: string; text: string } => typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text")
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+}
+
+/**
+ * Wraps one specialist as a callable tool for the coordinator (Rule 8). No
+ * checkpointer, no HITL middleware — builder.ts's config assembly already
+ * guarantees a specialist never carries a gated tool, so it can never need
+ * to pause. If that invariant were ever violated anyway, isInterrupted()
+ * throws loudly here rather than silently letting a risky call through
+ * ungated.
+ */
+async function buildSpecialistTool(specialist: SpecialistConfig) {
+  const runtimeTools = await loadRuntimeTools(specialist.tools);
+  const specialistAgent = createAgent({
     model: "anthropic:claude-sonnet-5",
     tools: buildLangchainTools(runtimeTools),
+    systemPrompt: specialist.system_prompt,
+  });
+
+  return tool(
+    async ({ task }: { task: string }) => {
+      const result = await specialistAgent.invoke({ messages: [new HumanMessage(task)] });
+      if (isInterrupted(result)) {
+        throw new Error(`Specialist '${specialist.name}' unexpectedly required approval — specialists must only use read-only tools.`);
+      }
+      const messages = (result as { messages?: BaseMessage[] }).messages ?? [];
+      return lastMessageText(messages);
+    },
+    {
+      name: specialist.name,
+      description: specialist.description,
+      schema: {
+        type: "object",
+        properties: { task: { type: "string", description: "What to ask this specialist to do." } },
+        required: ["task"],
+      },
+    }
+  );
+}
+
+async function buildAgent(config: AgentConfigDoc) {
+  const coordinatorRuntimeTools = await loadRuntimeTools(config.tools);
+  const coordinatorTools = buildLangchainTools(coordinatorRuntimeTools);
+
+  const specialistTools =
+    config.graph.type === "coordinator_specialist" ? await Promise.all(config.graph.specialists.map(buildSpecialistTool)) : [];
+
+  return createAgent({
+    model: "anthropic:claude-sonnet-5",
+    tools: [...specialistTools, ...coordinatorTools],
     systemPrompt: config.system_prompt,
-    middleware: [humanInTheLoopMiddleware({ interruptOn: buildInterruptOn(config) })],
+    middleware: [humanInTheLoopMiddleware({ interruptOn: buildInterruptOn(config.interrupt_before) })],
     checkpointer: getCheckpointer(),
   });
 }
@@ -105,27 +170,6 @@ export interface RunFinished {
   output: string;
 }
 
-/**
- * A message's `content` is a plain string only when the model replied with
- * nothing but text. The moment thinking is involved (adaptive thinking is
- * on by default for this model), content becomes an array of typed blocks
- * — `{type: "thinking", thinking, signature}` alongside `{type: "text",
- * text}`. Falling back to JSON.stringify() of that array (the previous
- * bug) leaked the thinking block's internal signature straight into the
- * response text. Only `text` blocks are ever user-facing output.
- */
-function lastMessageText(messages: BaseMessage[]): string {
-  const last = messages[messages.length - 1];
-  if (!last) return "";
-  if (typeof last.content === "string") return last.content;
-  if (!Array.isArray(last.content)) return "";
-  return last.content
-    .filter((block): block is { type: string; text: string } => typeof block === "object" && block !== null && (block as { type?: unknown }).type === "text")
-    .map((block) => block.text)
-    .join("\n")
-    .trim();
-}
-
 function readResult(result: unknown): RunPaused | RunFinished {
   if (isInterrupted<HITLRequest>(result)) {
     const payload = result[INTERRUPT][0]?.value;
@@ -136,7 +180,7 @@ function readResult(result: unknown): RunPaused | RunFinished {
   return { status: "completed", output: lastMessageText(messages) };
 }
 
-/** Starts a new run thread with a human message. Pauses at the first gated tool call, if any. */
+/** Starts a new run thread with a human message. Pauses at the first gated tool call, if any — always the coordinator's own, never a specialist's. */
 export async function startRun(threadId: string, config: AgentConfigDoc, message: string): Promise<RunPaused | RunFinished> {
   const agent = await buildAgent(config);
   const result = await agent.invoke({ messages: [new HumanMessage(message)] }, { configurable: { thread_id: threadId } });

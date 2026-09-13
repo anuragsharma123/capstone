@@ -42,13 +42,24 @@ export interface AgentTrigger {
   secret?: string;
 }
 
+/** One delegated role in a coordinator_specialist graph (Rule 8). Never carries a gated (non-read) tool — run/runtime.ts only puts humanInTheLoopMiddleware on the coordinator, so a specialist holding a write/destructive tool would bypass Rule 4. Enforced in code below, not left to the model's tool picks. */
+export interface SpecialistConfig {
+  name: string;
+  description: string;
+  system_prompt: string;
+  tools: AgentConfigTool[];
+}
+
+export type AgentGraph = { type: "sequential" } | { type: "coordinator_specialist"; specialists: SpecialistConfig[] };
+
 export interface AgentConfigDoc {
   schema_version: 1;
   name: string;
   description: string;
   model: string;
   system_prompt: string;
-  graph: { type: "sequential" };
+  graph: AgentGraph;
+  /** The coordinator's own tools when graph.type is coordinator_specialist — what IT calls directly, distinct from each specialist's own tools nested in graph.specialists. */
   tools: AgentConfigTool[];
   interrupt_before: string[];
   /**
@@ -124,13 +135,50 @@ export async function resumeAgentBuild(
   // Code decides tool wiring, sensitivity, and the approval gate — copied
   // straight from the registry, never the model's opinion (Rule 4). The
   // human's confirmation only prunes this set; it can't add to it.
-  const tools: AgentConfigTool[] = result.confirmedTools.map((t: MatchedTool) => ({
+  const toAgentConfigTool = (t: MatchedTool): AgentConfigTool => ({
     mcp_server_id: t.mcpServerId,
     server_name: t.serverName,
     tool_name: t.toolName,
     sensitivity: t.sensitivity,
     require_approval: t.sensitivity !== "read",
-  }));
+  });
+
+  let graph: AgentGraph;
+  let coordinatorTools: AgentConfigTool[];
+
+  if (result.parsed.graph.type === "sequential") {
+    coordinatorTools = result.confirmedTools.map(toAgentConfigTool);
+    graph = { type: "sequential" };
+  } else {
+    // Partition confirmed tools by role. A gated (non-read) tool tagged for
+    // a specialist is reassigned to the coordinator instead of honored as
+    // that specialist's own — run/runtime.ts only ever puts
+    // humanInTheLoopMiddleware on the coordinator, so a specialist holding
+    // a write/destructive tool would silently bypass Rule 4. This is the
+    // structural fix, not a fallback: risky actions are always the
+    // coordinator's job by design (DESIGN-NOTES §2.14's sibling decision
+    // for Rule 8).
+    const coordinatorConfirmed: MatchedTool[] = [];
+    const bySpecialist = new Map<string, MatchedTool[]>();
+    for (const t of result.confirmedTools) {
+      if (t.role === "coordinator" || t.sensitivity !== "read") {
+        coordinatorConfirmed.push(t);
+      } else {
+        const list = bySpecialist.get(t.role) ?? [];
+        list.push(t);
+        bySpecialist.set(t.role, list);
+      }
+    }
+
+    coordinatorTools = coordinatorConfirmed.map(toAgentConfigTool);
+    const specialists: SpecialistConfig[] = result.parsed.graph.specialists.map((s) => ({
+      name: s.name,
+      description: s.description,
+      system_prompt: s.system_prompt,
+      tools: (bySpecialist.get(s.name) ?? []).map(toAgentConfigTool),
+    }));
+    graph = { type: "coordinator_specialist", specialists };
+  }
 
   const config: AgentConfigDoc = {
     schema_version: 1,
@@ -138,9 +186,9 @@ export async function resumeAgentBuild(
     description: result.parsed.description,
     model: "claude-sonnet-5",
     system_prompt: result.parsed.system_prompt,
-    graph: { type: "sequential" },
-    tools,
-    interrupt_before: tools.filter((t) => t.require_approval).map((t) => t.tool_name),
+    graph,
+    tools: coordinatorTools,
+    interrupt_before: coordinatorTools.filter((t) => t.require_approval).map((t) => t.tool_name),
     trigger:
       result.parsed.trigger.type === "webhook"
         ? { ...result.parsed.trigger, secret: randomBytes(24).toString("hex") }

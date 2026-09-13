@@ -128,17 +128,20 @@ export function normalizeAddress(input: string): string {
 
 // ---------- Agent Builder ----------
 
+/** `role` is `"coordinator"` or a specialist's name — which agent this tool is for (Rule 8). A plain single-agent build's tools all carry `"coordinator"`. */
 export interface MatchedTool {
   mcpServerId: string;
   serverName: string;
   toolName: string;
   sensitivity: Sensitivity;
+  role: string;
 }
 
 /** Identifies a matched tool to keep — never carries a sensitivity or new tool of its own (server decides that, not the client). */
 export interface ConfirmedToolRef {
   mcpServerId: string;
   toolName: string;
+  role: string;
 }
 
 export interface MissingServer {
@@ -165,13 +168,24 @@ export interface AgentTrigger {
   detail: string;
 }
 
+/** One delegated role in a coordinator_specialist graph (Rule 8). */
+export interface SpecialistConfig {
+  name: string;
+  description: string;
+  system_prompt: string;
+  tools: AgentConfigTool[];
+}
+
+export type AgentGraph = { type: "sequential" } | { type: "coordinator_specialist"; specialists: SpecialistConfig[] };
+
 export interface AgentConfigDoc {
   schema_version: 1;
   name: string;
   description: string;
   model: string;
   system_prompt: string;
-  graph: { type: string };
+  graph: AgentGraph;
+  /** The coordinator's own tools when graph.type is coordinator_specialist — distinct from each specialist's own tools nested in graph.specialists. */
   tools: AgentConfigTool[];
   interrupt_before: string[];
   trigger: AgentTrigger;

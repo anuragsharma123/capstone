@@ -1,4 +1,4 @@
-// Build Orchestrator — third slice (DESIGN-NOTES §4, "Run lane · Agent
+// Build Orchestrator — fourth slice (DESIGN-NOTES §4, "Run lane · Agent
 // Config Store"). Five nodes, two pauses:
 //   parse_intent -> search_registry -> present_tools (⏸ always)
 //     -> check_connections -> request_credentials (⏸ only if a connection
@@ -6,6 +6,15 @@
 // generate_config/score_agent/deploy are still later work — for now the
 // assembled config is persisted directly once both pauses (the second one
 // only when needed) have cleared.
+//
+// Rule 8 (coordinator_specialist): parse_intent decides the shape and — for
+// a multi-agent request — proposes specialist roles (name/description/
+// system_prompt only, never tools). search_registry then runs one
+// tool-selection pass per role (the coordinator, plus each specialist),
+// tagging every matched tool with which role it's for. Everything downstream
+// (present_tools, check_connections) treats a tagged tool exactly like a
+// plain one; only services/builder.ts, at final config assembly, partitions
+// them back into the coordinator's own tools vs. each specialist's.
 import { StateGraph, Annotation, START, END, interrupt, isInterrupted, INTERRUPT, Command } from "@langchain/langgraph";
 import Anthropic from "@anthropic-ai/sdk";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
@@ -21,15 +30,23 @@ import { getCheckpointer } from "../checkpointer.js";
 
 const client = new Anthropic({ apiKey: config.ANTHROPIC_API_KEY });
 
-// LLM decides prose only — name/description/system_prompt/trigger. It never
-// picks tools, sensitivity, or approval requirements; those are code-decided
-// from the registry (Rule 4, DESIGN-NOTES §2.11). Tool selection is a
-// separate LLM call (searchRegistry, below) — this one doesn't see the
-// registry at all.
+const SpecialistPlanSchema = z4.object({
+  name: z4.string().describe("A short snake_case identifier, e.g. 'issue_reader' — used as the specialist's tool name for the coordinator."),
+  description: z4.string().describe("One sentence: what this specialist does. Shown to the coordinator as that tool's description."),
+  system_prompt: z4.string().describe("The system prompt this specialist runs with — its own scoped job, not the whole request."),
+});
+
+// LLM decides prose + shape only — name/description/system_prompt/trigger/
+// graph. It never picks tools, sensitivity, or approval requirements; those
+// are code-decided from the registry (Rule 4, DESIGN-NOTES §2.11). Tool
+// selection is a separate LLM call (searchRegistry, below) — this one
+// doesn't see the registry at all.
 const ParsedIntentSchema = z4.object({
   name: z4.string().describe("A short, human-friendly name for the agent, 2-5 words."),
   description: z4.string().describe("One or two sentences describing what the agent does."),
-  system_prompt: z4.string().describe("The system prompt the agent should run with."),
+  system_prompt: z4
+    .string()
+    .describe("The system prompt the agent runs with. For a coordinator_specialist graph, this is the COORDINATOR's prompt — how it uses its specialists and what it does with their findings."),
   trigger: z4
     .object({
       type: z4
@@ -44,26 +61,43 @@ const ParsedIntentSchema = z4.object({
         .describe("Short specifics — e.g. 'GitHub push event' for webhook, 'Weekdays 08:00' for schedule, empty string for manual."),
     })
     .describe("What starts a run — never assume 'schedule' by default; most single-action requests are event-driven or on-demand."),
+  graph: z4
+    .object({
+      type: z4
+        .enum(["sequential", "coordinator_specialist"])
+        .describe(
+          "'coordinator_specialist' only when the request naturally splits into two or more distinct delegated sub-tasks " +
+            "(e.g. one specialist gathers information, another assesses it) before a final action. 'sequential' otherwise — " +
+            "most requests are sequential; don't invent specialists that aren't genuinely separate roles."
+        ),
+      specialists: z4
+        .array(SpecialistPlanSchema)
+        .describe("Two or more entries when type='coordinator_specialist'; an empty array when type='sequential'."),
+    })
+    .describe("The agent's shape. Specialists never get their own tools here — search_registry assigns those separately."),
 });
 type ParsedIntent = z4.infer<typeof ParsedIntentSchema>;
 
 const ToolSelectionSchema = z4.object({
   selected: z4
     .array(z4.object({ mcpServerId: z4.string(), toolName: z4.string() }))
-    .describe("The minimal set of catalog entries actually needed for the request — not everything a relevant server offers."),
+    .describe("The minimal set of catalog entries actually needed for this role — not everything a relevant server offers."),
 });
 
+/** `role` is `"coordinator"` or a specialist's `name` — which agent this tool belongs to. A plain sequential agent's tools all carry `"coordinator"`. */
 export interface MatchedTool {
   mcpServerId: string;
   serverName: string;
   toolName: string;
   sensitivity: string;
+  role: string;
 }
 
-/** What the client sends back on resume — identifies which matched tools to keep. Never trusted for anything beyond that lookup (see presentTools below). */
+/** What the client sends back on resume — identifies which matched tools to keep, per role. Never trusted for anything beyond that lookup (see presentTools below). */
 export interface ConfirmedToolRef {
   mcpServerId: string;
   toolName: string;
+  role: string;
 }
 
 export interface MissingServer {
@@ -91,17 +125,19 @@ async function parseIntent(state: typeof BuildState.State): Promise<Partial<type
   try {
     response = await client.messages.parse({
       model: "claude-sonnet-5",
-      // Deliberately short structured output (a name, a couple sentences, a
-      // handful of keywords) — not a classification task, but not a reason
-      // to reach for a 16k ceiling either.
-      max_tokens: 2048,
+      // A short prose block plus an optional handful of specialist roles —
+      // still not a reason to reach for a 16k ceiling.
+      max_tokens: 3000,
       system:
         "Extract a structured build intent from the user's request for an AI agent. " +
-        "Extract prose (name, description, system_prompt) and classify its trigger — " +
+        "Extract prose (name, description, system_prompt), classify its trigger, and decide its shape (graph) — " +
         "never decide which tools it gets; that's handled separately. " +
         "For the trigger: 'reacts when X happens' (a commit, a new issue, an incoming message) is a webhook, not a schedule. " +
         "Only classify 'schedule' when the request itself names a recurring cadence (daily, every morning, weekly). " +
-        "If neither is stated, use 'manual'.",
+        "If neither is stated, use 'manual'. " +
+        "For the shape: only use coordinator_specialist when the request genuinely implies two or more distinct delegated " +
+        "roles working together (e.g. one gathers information, another evaluates or prioritizes it) before the coordinator " +
+        "takes a final action itself. Otherwise use sequential — that's the common case.",
       messages: [{ role: "user", content: state.prompt }],
       output_config: { format: zodOutputFormat(ParsedIntentSchema) },
     });
@@ -124,39 +160,33 @@ async function parseIntent(state: typeof BuildState.State): Promise<Partial<type
   return { parsed: response.parsed_output };
 }
 
+interface CatalogRow {
+  mcp_server_id: string;
+  server_name: string;
+  tool_name: string;
+  description: string | null;
+  sensitivity: string;
+}
+
 /**
  * The tool-selection sub-agent: a second, distinct LLM call whose only job
- * is picking the minimal set of tools the described intent actually needs —
- * not a keyword search. A prior ILIKE-based version matched any tool whose
+ * is picking the minimal set of tools a given role actually needs — not a
+ * keyword search. A prior ILIKE-based version matched any tool whose
  * name/description contained a loose keyword (e.g. "commit", "repository"),
  * which pulled in a server's entire unrelated tool set (delete_file,
  * create_repository, ...) alongside the one or two tools actually needed.
  * This call sees the full catalog with descriptions and reasons about fit.
  *
- * The model's picks are never trusted directly — every returned
- * {mcpServerId, toolName} is looked up against the real catalog rows fetched
- * a few lines above; anything that doesn't match a real row (a typo'd name,
- * a hallucinated tool) is silently dropped. sensitivity always comes from
- * that catalog row, never from the model (Rule 4).
+ * Called once per role (the coordinator, and once per specialist) so a
+ * multi-agent build's tool assignment is genuinely scoped per role, not one
+ * flat list guessed at once. The model's picks are never trusted directly:
+ * every returned {mcpServerId, toolName} is looked up against the real
+ * catalog rows; anything that doesn't match a real row (a typo'd name, a
+ * hallucinated tool) is silently dropped. sensitivity always comes from that
+ * catalog row, never from the model (Rule 4).
  */
-async function searchRegistry(state: typeof BuildState.State): Promise<Partial<typeof BuildState.State>> {
-  const pool = getPool();
-  const { rows } = await pool.query<{
-    mcp_server_id: string;
-    server_name: string;
-    tool_name: string;
-    description: string | null;
-    sensitivity: string;
-  }>(
-    `SELECT s.id AS mcp_server_id, s.name AS server_name, t.name AS tool_name, t.description, t.sensitivity
-     FROM mcp_tools t
-     JOIN mcp_servers s ON s.id = t.server_id
-     WHERE t.owner_id = $1
-     ORDER BY s.name, t.name`,
-    [DEFAULT_OWNER_ID]
-  );
-  if (rows.length === 0) return { matchedTools: [] };
-
+async function selectToolsForRole(roleLabel: string, roleBrief: string, rows: CatalogRow[]): Promise<MatchedTool[]> {
+  if (rows.length === 0) return [];
   const catalog = rows
     .map((r) => `server="${r.server_name}" mcpServerId="${r.mcp_server_id}" tool="${r.tool_name}" (${r.sensitivity}): ${r.description ?? "no description"}`)
     .join("\n");
@@ -167,12 +197,10 @@ async function searchRegistry(state: typeof BuildState.State): Promise<Partial<t
       model: "claude-sonnet-5",
       max_tokens: 2048,
       system:
-        "You select the MINIMAL set of tools an agent needs to accomplish the user's request, from a fixed catalog of " +
-        "already-registered tools. Only pick a tool if the request genuinely requires it — do not pick every tool a " +
-        "relevant server offers just because one of its tools is needed. For example, an agent that only needs to post " +
-        "a Slack message when a commit happens needs one commit-reading tool and one message-sending tool — not that " +
-        "server's file, branch, or repository management tools. Never invent a tool or mcpServerId that isn't in the catalog.",
-      messages: [{ role: "user", content: `Request: ${state.prompt}\n\nCatalog:\n${catalog}` }],
+        "You select the MINIMAL set of tools this specific role needs, from a fixed catalog of already-registered tools. " +
+        "Only pick a tool if the role genuinely requires it — do not pick every tool a relevant server offers just because " +
+        "one of its tools is needed. Never invent a tool or mcpServerId that isn't in the catalog.",
+      messages: [{ role: "user", content: `Role: ${roleBrief}\n\nCatalog:\n${catalog}` }],
       output_config: { format: zodOutputFormat(ToolSelectionSchema) },
     });
   } catch (err) {
@@ -187,36 +215,70 @@ async function searchRegistry(state: typeof BuildState.State): Promise<Partial<t
     }
     throw err;
   }
-
   if (!response.parsed_output) {
-    throw new ServiceError(502, "Agent Builder: the model's tool selection didn't match the expected shape.");
+    throw new ServiceError(502, `Agent Builder: the tool selection for "${roleLabel}" didn't match the expected shape.`);
   }
 
   const bySignature = new Map(rows.map((r) => [`${r.mcp_server_id}:${r.tool_name}`, r]));
-  const matchedTools: MatchedTool[] = [];
+  const matched: MatchedTool[] = [];
   for (const pick of response.parsed_output.selected) {
     const row = bySignature.get(`${pick.mcpServerId}:${pick.toolName}`);
-    if (row) matchedTools.push({ mcpServerId: row.mcp_server_id, serverName: row.server_name, toolName: row.tool_name, sensitivity: row.sensitivity });
+    if (row) matched.push({ mcpServerId: row.mcp_server_id, serverName: row.server_name, toolName: row.tool_name, sensitivity: row.sensitivity, role: roleLabel });
   }
-  return { matchedTools };
+  return matched;
+}
+
+async function searchRegistry(state: typeof BuildState.State): Promise<Partial<typeof BuildState.State>> {
+  const pool = getPool();
+  const { rows } = await pool.query<CatalogRow>(
+    `SELECT s.id AS mcp_server_id, s.name AS server_name, t.name AS tool_name, t.description, t.sensitivity
+     FROM mcp_tools t
+     JOIN mcp_servers s ON s.id = t.server_id
+     WHERE t.owner_id = $1
+     ORDER BY s.name, t.name`,
+    [DEFAULT_OWNER_ID]
+  );
+  if (rows.length === 0 || !state.parsed) return { matchedTools: [] };
+
+  if (state.parsed.graph.type === "sequential") {
+    const matchedTools = await selectToolsForRole("coordinator", state.prompt, rows);
+    return { matchedTools };
+  }
+
+  // coordinator_specialist: one selection pass per role, run independently
+  // so each role's tool set only reflects its own job — the coordinator's
+  // brief explicitly excludes the sub-tasks its specialists already cover.
+  const specialistBriefs = state.parsed.graph.specialists.map((s) => `${s.name}: ${s.description}`).join("; ");
+  const coordinatorBrief =
+    `${state.prompt}\n\nYou are the COORDINATOR, delegating to these specialists: ${specialistBriefs}. ` +
+    `Only pick tools YOU directly need to perform your own final action(s) — not tools your specialists need for their own sub-tasks.`;
+
+  const [coordinatorTools, ...specialistToolLists] = await Promise.all([
+    selectToolsForRole("coordinator", coordinatorBrief, rows),
+    ...state.parsed.graph.specialists.map((s) => selectToolsForRole(s.name, `${s.description}\n\n${s.system_prompt}`, rows)),
+  ]);
+
+  return { matchedTools: [...coordinatorTools, ...specialistToolLists.flat()] };
 }
 
 /**
  * Always pauses (matches the documented graph shape — `present_tools` is
  * unconditional, unlike `request_credentials`). The resume value is never
  * trusted directly: it only selects *which* of the already-classified
- * `matchedTools` to keep, never introduces a new tool or overrides a
- * sensitivity — that would let a client bypass Rule 4 from the resume path.
+ * `matchedTools` to keep (matched on role + server + tool together, so the
+ * same tool picked for two different roles is tracked independently), never
+ * introduces a new tool, role, or overrides a sensitivity — that would let a
+ * client bypass Rule 4 from the resume path.
  */
 async function presentTools(state: typeof BuildState.State): Promise<Partial<typeof BuildState.State>> {
   const confirmed = interrupt<{ matchedTools: MatchedTool[] }, ConfirmedToolRef[]>({
     matchedTools: state.matchedTools,
   });
-  const keep = new Set(confirmed.map((c) => `${c.mcpServerId}:${c.toolName}`));
-  return { confirmedTools: state.matchedTools.filter((t) => keep.has(`${t.mcpServerId}:${t.toolName}`)) };
+  const keep = new Set(confirmed.map((c) => `${c.role}:${c.mcpServerId}:${c.toolName}`));
+  return { confirmedTools: state.matchedTools.filter((t) => keep.has(`${t.role}:${t.mcpServerId}:${t.toolName}`)) };
 }
 
-/** Pure check — which of the confirmed tools' servers need a credential that isn't on file yet. A server with no auth_spec at all needs nothing (open access), so it's never "missing". */
+/** Pure check — which of the confirmed tools' servers need a credential that isn't on file yet. A server with no auth_spec at all needs nothing (open access), so it's never "missing". Role-agnostic: a server used by both a specialist and the coordinator only needs connecting once. */
 async function checkConnections(state: typeof BuildState.State): Promise<Partial<typeof BuildState.State>> {
   const serverIds = [...new Set(state.confirmedTools.map((t) => t.mcpServerId))];
   if (serverIds.length === 0) return { missingServers: [] };

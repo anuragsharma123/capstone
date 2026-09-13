@@ -1,5 +1,5 @@
 import { Link } from "react-router-dom";
-import type { AgentConfigDoc } from "../../lib/api";
+import type { AgentConfigDoc, AgentConfigTool } from "../../lib/api";
 
 interface Props {
   config: AgentConfigDoc;
@@ -20,13 +20,25 @@ function triggerSummary(trigger: AgentConfigDoc["trigger"]): string {
   return "Not scheduled — runs on demand";
 }
 
+function shapeSummary(graph: AgentConfigDoc["graph"]): string {
+  if (graph.type === "sequential") return "Sequential";
+  return `Coordinator with ${graph.specialists.length} specialist${graph.specialists.length === 1 ? "" : "s"}`;
+}
+
+function toolChip(t: AgentConfigTool) {
+  return (
+    <code key={`${t.mcp_server_id}:${t.tool_name}`}>
+      {serverSlug(t.server_name)}.{t.tool_name}
+    </code>
+  );
+}
+
 /**
- * The one "built agent" card — same component regardless of which build flow
- * produced it. Shape/Schedule/Score reflect what's actually built today, not
- * the eventual target: graph.type is always "sequential" (Rule 8's
- * coordinator_specialist isn't built), there's no schedule/trigger concept
- * yet (DESIGN-NOTES §2.11), and a score only exists after publish
- * (services/scoring.ts) — never fabricated as a placeholder number here.
+ * The one "built agent" card — same component regardless of which build
+ * flow produced it. Shape reflects the real graph (Rule 8's
+ * coordinator_specialist is built — run/runtime.ts actually executes it).
+ * Score stays "not tested yet": it only exists after publish
+ * (services/scoring.ts), never fabricated as a placeholder number here.
  */
 export default function AgentCard({ config }: Props) {
   return (
@@ -41,17 +53,31 @@ export default function AgentCard({ config }: Props) {
         <div className="agent-fact">
           <dt>Shape</dt>
           <dd>
-            Sequential <span className="vis-badge">single-agent</span>
+            {shapeSummary(config.graph)}{" "}
+            <span className="vis-badge">{config.graph.type === "sequential" ? "single-agent" : "multi-agent"}</span>
           </dd>
         </div>
         <div className="agent-fact">
           <dt>Tools</dt>
           <dd className="agent-fact-tools">
-            {config.tools.map((t) => (
-              <code key={t.tool_name}>
-                {serverSlug(t.server_name)}.{t.tool_name}
-              </code>
-            ))}
+            {config.graph.type === "sequential" ? (
+              config.tools.map(toolChip)
+            ) : (
+              <>
+                {config.tools.length > 0 && (
+                  <div className="agent-fact-role">
+                    <span className="agent-fact-role-label">coordinator</span>
+                    {config.tools.map(toolChip)}
+                  </div>
+                )}
+                {config.graph.specialists.map((s) => (
+                  <div className="agent-fact-role" key={s.name}>
+                    <span className="agent-fact-role-label">{s.name}</span>
+                    {s.tools.length > 0 ? s.tools.map(toolChip) : <span className="agent-fact-role-empty">reasoning only</span>}
+                  </div>
+                ))}
+              </>
+            )}
           </dd>
         </div>
         <div className="agent-fact">
