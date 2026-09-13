@@ -1,0 +1,277 @@
+<title>Data Sense End-to-End Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500&display=swap">
+<style>
+  :root{
+    --bg:#f3f5f7; --surface:#ffffff; --surface-2:#e9edf1; --ink:#1a2129;
+    --muted:#586573; --border:#d3dae1; --line:#9aa7b2;
+    --accent:#0e7b85; --accent-soft:#dceff0;
+    --human:#a9631a; --human-soft:#f4ebdc;
+    --good:#2f7d4f;
+    --maxw:740px;
+    --f-display:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --f-body:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+    --f-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+      --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+      --accent:#48b8c1; --accent-soft:#123037;
+      --human:#d99a52; --human-soft:#2c2318;
+      --good:#63b585;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+    --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+    --accent:#48b8c1; --accent-soft:#123037;
+    --human:#d99a52; --human-soft:#2c2318;
+    --good:#63b585;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--f-body); font-size:17px; line-height:1.65;
+  }
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+  header{border-bottom:1px solid var(--border); padding:56px 0 30px}
+  .eyebrow{
+    font-family:var(--f-mono); font-size:12px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 16px;
+  }
+  h1{
+    font-family:var(--f-display); font-weight:600; font-size:2.4rem;
+    line-height:1.1; letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance;
+  }
+  .dek{font-size:1.1rem; color:var(--muted); margin:0; max-width:62ch}
+
+  main{padding:32px 0 90px}
+
+  .figframe{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:12px; padding:22px 12px 14px; overflow-x:auto;
+  }
+  .figframe svg{display:block; margin:0 auto; min-width:480px; max-width:540px; width:100%; height:auto; color:var(--line)}
+
+  .fc .band{fill:var(--surface-2)}
+  .fc .bandlabel{font-family:var(--f-mono); font-size:10px; letter-spacing:.15em; fill:var(--muted)}
+  .fc .node{fill:var(--surface); stroke:var(--border); stroke-width:1.3}
+  .fc .node.pause{stroke:var(--human); stroke-width:1.6}
+  .fc .side{fill:var(--surface); stroke:var(--human); stroke-width:1.2; stroke-dasharray:4 3}
+  .fc .bar{fill:var(--human)}
+  .fc .diamond{fill:var(--surface); stroke:var(--accent); stroke-width:1.6}
+  .fc .title{font-family:var(--f-display); font-size:12px; font-weight:500; fill:var(--ink)}
+  .fc .title.h{fill:var(--human); font-size:10px}
+  .fc .sub{font-family:var(--f-mono); font-size:8.5px; fill:var(--muted)}
+  .fc .dtitle{font-family:var(--f-mono); font-size:10.5px; fill:var(--accent)}
+  .fc .kick{font-family:var(--f-mono); font-size:7.5px; letter-spacing:.12em; fill:var(--human)}
+  .fc .edge{stroke:var(--line); stroke-width:1.5; fill:none}
+  .fc .edge.no{stroke:var(--human); stroke-dasharray:4 3}
+  .fc .elabel{
+    font-family:var(--f-mono); font-size:9px; fill:var(--muted);
+    paint-order:stroke; stroke:var(--surface); stroke-width:3.5px; stroke-linejoin:round;
+  }
+  .fc .elabel.h{fill:var(--human)}
+  .fc marker#a path{fill:var(--line)}
+  .fc marker#an path{fill:var(--human)}
+
+  .legend{
+    display:flex; flex-wrap:wrap; gap:10px 22px; margin:16px 2px 0;
+    font-family:var(--f-mono); font-size:11.5px; color:var(--muted);
+  }
+  .legend i{font-style:normal; display:inline-flex; align-items:center; gap:8px}
+  .legend .k{width:16px; height:12px; border:1.4px solid var(--border); border-radius:2px; background:var(--surface); flex:none}
+  .legend .k.pause{border-color:var(--human); border-left-width:4px}
+  .legend .k.dec{width:12px; height:12px; background:var(--surface); border:1.5px solid var(--accent); transform:rotate(45deg); border-radius:1px}
+
+  .take{margin-top:30px; border-left:3px solid var(--human); padding:2px 0 2px 20px}
+  .take h2{font-family:var(--f-display); font-size:1.05rem; font-weight:600; margin:0 0 8px}
+  .take p{margin:0; color:var(--muted); font-size:15px}
+  .take b{color:var(--ink); font-weight:600}
+
+  .gates{margin-top:26px}
+  .gates h2{font-family:var(--f-display); font-size:1.05rem; font-weight:600; margin:0 0 10px}
+  .gates ul{margin:0; padding:0; list-style:none; display:grid; gap:2px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--border)}
+  .gates li{background:var(--surface); padding:12px 16px; font-size:14.5px; color:var(--muted)}
+  .gates li b{color:var(--ink); font-weight:600; font-family:var(--f-mono); font-size:12.5px; margin-right:4px}
+
+  footer{
+    margin-top:40px; border-top:1px solid var(--border); padding:24px 0 0;
+    font-family:var(--f-mono); font-size:12px; color:var(--muted);
+    display:flex; flex-wrap:wrap; gap:6px 18px;
+  }
+  @media (max-width:520px){ h1{font-size:1.9rem} }
+</style>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Data Sense · Agent Builder Capstone</p>
+    <h1>The Flow, Start to Finish</h1>
+    <p class="dek">The whole product in one picture — from signing in to another company installing your agent. Plain boxes are things the platform does on its own; the amber steps are where it stops and waits for a person.</p>
+  </div>
+</header>
+
+<main>
+  <div class="wrap">
+    <div class="figframe">
+      <svg class="fc" viewBox="0 0 520 1100" role="img" aria-label="End-to-end flowchart in three phases. Set up once: sign in; register an MCP server, and the platform reads and tags its tools as read, write or destructive; add a connection by pasting a token once, which is encrypted on entry. Build and test: describe the agent in plain English; the platform proposes the tools it needs and waits for you to pick; it checks that you are connected to each one, and if not it waits for you to add the missing token before re-checking; then it writes the config, deploys and scores it; you test it in a playground chat; when the agent tries a write or delete it waits for your Approve or Reject. Publish and share: click Publish; if the score is below the bar publishing is blocked and it names the score that fell short; otherwise an admin reviews it and either approves it or sends it back with notes to fix and rebuild; once approved it goes live in the marketplace with company details stripped; someone in another company installs it and gets their own copy with their own credentials.">
+        <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+          <marker id="an" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+        </defs>
+
+        <!-- phase bands -->
+        <rect class="band" x="6" y="44" width="330" height="212" rx="10"/>
+        <text class="bandlabel" x="20" y="62">SET UP · ONCE</text>
+        <rect class="band" x="6" y="266" width="330" height="418" rx="10"/>
+        <text class="bandlabel" x="20" y="284">BUILD &amp; TEST</text>
+        <rect class="band" x="6" y="690" width="330" height="390" rx="10"/>
+        <text class="bandlabel" x="20" y="708">PUBLISH &amp; SHARE</text>
+
+        <!-- spine arrows -->
+        <path class="edge" d="M170 98 V116"  marker-end="url(#a)"/>
+        <path class="edge" d="M170 174 V192" marker-end="url(#a)"/>
+        <path class="edge" d="M170 244 V278" marker-end="url(#a)"/>
+        <path class="edge" d="M170 318 V338" marker-end="url(#a)"/>
+        <path class="edge" d="M170 394 V400" marker-end="url(#a)"/>
+        <path class="edge" d="M170 464 V482" marker-end="url(#a)"/><text class="elabel" x="180" y="476">yes</text>
+        <path class="edge" d="M170 538 V558" marker-end="url(#a)"/>
+        <path class="edge" d="M170 598 V618" marker-end="url(#a)"/>
+        <path class="edge" d="M170 674 V706" marker-end="url(#a)"/>
+        <path class="edge" d="M170 744 V768" marker-end="url(#a)"/>
+        <path class="edge" d="M170 832 V850" marker-end="url(#a)"/><text class="elabel" x="180" y="844">pass</text>
+        <path class="edge" d="M170 906 V926" marker-end="url(#a)"/><text class="elabel" x="180" y="920">approved</text>
+        <path class="edge" d="M170 978 V998" marker-end="url(#a)"/>
+
+        <!-- 1 -->
+        <rect class="node" x="40" y="60" width="260" height="38" rx="7"/>
+        <text class="title" x="170" y="83" text-anchor="middle">Sign in</text>
+
+        <!-- 2 -->
+        <rect class="node" x="40" y="116" width="260" height="58" rx="7"/>
+        <text class="title" x="170" y="139" text-anchor="middle">Register an MCP server</text>
+        <text class="sub" x="170" y="156" text-anchor="middle">platform reads its tools · tags each</text>
+        <text class="sub" x="170" y="167" text-anchor="middle">read / write / destructive</text>
+
+        <!-- 3 -->
+        <rect class="node" x="40" y="192" width="260" height="52" rx="7"/>
+        <text class="title" x="170" y="214" text-anchor="middle">Add a connection</text>
+        <text class="sub" x="170" y="231" text-anchor="middle">paste token once → encrypted, never shown again</text>
+
+        <!-- 4 -->
+        <rect class="node" x="40" y="278" width="260" height="40" rx="7"/>
+        <text class="title" x="170" y="302" text-anchor="middle">Describe the agent in plain English</text>
+
+        <!-- 5 pause -->
+        <rect class="node pause" x="40" y="338" width="260" height="56" rx="7"/>
+        <rect class="bar" x="40" y="338" width="4" height="56"/>
+        <text class="kick" x="54" y="353">WAITS FOR YOU</text>
+        <text class="title" x="174" y="369" text-anchor="middle">Platform proposes the tools it needs</text>
+        <text class="sub" x="174" y="385" text-anchor="middle">you tick the ones you want</text>
+
+        <!-- D1 -->
+        <polygon class="diamond" points="170,400 290,432 170,464 50,432"/>
+        <text class="dtitle" x="170" y="429" text-anchor="middle">connected to</text>
+        <text class="dtitle" x="170" y="441" text-anchor="middle">each one?</text>
+
+        <!-- D1 no -> side -->
+        <path class="edge no" d="M290 432 H360" marker-end="url(#an)"/>
+        <text class="elabel h" x="325" y="425">no</text>
+        <rect class="side" x="360" y="410" width="150" height="46" rx="7"/>
+        <text class="title h" x="435" y="429" text-anchor="middle">Add the missing token,</text>
+        <text class="title h" x="435" y="442" text-anchor="middle">then re-check</text>
+
+        <!-- 6 -->
+        <rect class="node" x="40" y="482" width="260" height="56" rx="7"/>
+        <text class="title" x="170" y="505" text-anchor="middle">Platform writes the config,</text>
+        <text class="title" x="170" y="520" text-anchor="middle">deploys it, scores it</text>
+        <text class="sub" x="170" y="533" text-anchor="middle">the config is data, not code</text>
+
+        <!-- 7 -->
+        <rect class="node" x="40" y="558" width="260" height="40" rx="7"/>
+        <text class="title" x="170" y="582" text-anchor="middle">Playground — chat to test the agent</text>
+
+        <!-- 8 pause -->
+        <rect class="node pause" x="40" y="618" width="260" height="56" rx="7"/>
+        <rect class="bar" x="40" y="618" width="4" height="56"/>
+        <text class="kick" x="54" y="633">WAITS FOR YOU</text>
+        <text class="title" x="174" y="649" text-anchor="middle">Agent tries a write or delete</text>
+        <text class="sub" x="174" y="665" text-anchor="middle">Approve or Reject, right in the chat</text>
+
+        <!-- 9 -->
+        <rect class="node" x="40" y="706" width="260" height="38" rx="7"/>
+        <text class="title" x="170" y="729" text-anchor="middle">Click Publish</text>
+
+        <!-- D2 -->
+        <polygon class="diamond" points="170,768 290,800 170,832 50,800"/>
+        <text class="dtitle" x="170" y="797" text-anchor="middle">score above</text>
+        <text class="dtitle" x="170" y="809" text-anchor="middle">the bar?</text>
+
+        <!-- D2 no -> side -->
+        <path class="edge no" d="M290 800 H360" marker-end="url(#an)"/>
+        <text class="elabel h" x="325" y="793">no</text>
+        <rect class="side" x="360" y="772" width="150" height="52" rx="7"/>
+        <text class="title h" x="435" y="791" text-anchor="middle">Publish blocked — it</text>
+        <text class="title h" x="435" y="804" text-anchor="middle">names the score that</text>
+        <text class="title h" x="435" y="817" text-anchor="middle">fell short. Rebuild.</text>
+
+        <!-- 10 pause -->
+        <rect class="node pause" x="40" y="850" width="260" height="56" rx="7"/>
+        <rect class="bar" x="40" y="850" width="4" height="56"/>
+        <text class="kick" x="54" y="865">WAITS FOR AN ADMIN</text>
+        <text class="title" x="174" y="881" text-anchor="middle">An admin reviews it</text>
+        <text class="sub" x="174" y="897" text-anchor="middle">approve · or send back with notes</text>
+
+        <!-- 10 send-back -> side -->
+        <path class="edge no" d="M300 878 H360" marker-end="url(#an)"/>
+        <text class="elabel h" x="330" y="871">back</text>
+        <rect class="side" x="360" y="856" width="150" height="44" rx="7"/>
+        <text class="title h" x="435" y="874" text-anchor="middle">Sent back with notes</text>
+        <text class="title h" x="435" y="887" text-anchor="middle">→ fix &amp; rebuild</text>
+
+        <!-- 11 -->
+        <rect class="node" x="40" y="926" width="260" height="52" rx="7"/>
+        <text class="title" x="170" y="948" text-anchor="middle">Live in the Marketplace</text>
+        <text class="sub" x="170" y="965" text-anchor="middle">company details stripped out</text>
+
+        <!-- 12 -->
+        <rect class="node" x="40" y="998" width="260" height="56" rx="7"/>
+        <text class="title" x="170" y="1021" text-anchor="middle">Another company installs it</text>
+        <text class="sub" x="170" y="1037" text-anchor="middle">their own copy · their own credentials</text>
+      </svg>
+    </div>
+
+    <div class="legend">
+      <i><span class="k"></span> the platform does this on its own</i>
+      <i><span class="k pause"></span> stops and waits for a person</i>
+      <i><span class="k dec"></span> decision</i>
+      <i><span style="color:var(--human)">– –</span> sends you back to Build</i>
+    </div>
+
+    <div class="take">
+      <h2>Four places it waits for a person</h2>
+      <p>Pick the tools · add a missing connection · approve a risky action · pass admin review. Each is a <b>checkpoint</b> — the run can stop for minutes or for days, survive a server restart, and pick up exactly where it left off.</p>
+    </div>
+
+    <div class="gates">
+      <h2>Three gates that can turn you around</h2>
+      <ul>
+        <li><b>connection missing</b> the build won't continue until every tool it picked has a working connection</li>
+        <li><b>score below the bar</b> Publish stays disabled, and the page tells you which number fell short</li>
+        <li><b>admin sends it back</b> you get notes, fix the agent, re-submit — the review resumes, it doesn't restart</li>
+      </ul>
+    </div>
+
+    <footer>
+      <span>Data Sense · Agent Builder Capstone</span>
+      <span>End-to-end flow</span>
+      <span>Companion to the architecture &amp; data-model docs</span>
+    </footer>
+  </div>
+</main>

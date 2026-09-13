@@ -1,0 +1,177 @@
+<title>Data Sense Design Pack</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500&display=swap">
+<style>
+  :root{
+    --bg:#f3f5f7; --surface:#ffffff; --surface-2:#e9edf1; --ink:#1a2129;
+    --muted:#586573; --border:#d3dae1; --line:#9aa7b2;
+    --accent:#0e7b85; --accent-soft:#dceff0;
+    --human:#a9631a;
+    --maxw:780px;
+    --f-display:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --f-body:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+    --f-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+      --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+      --accent:#48b8c1; --accent-soft:#123037; --human:#d99a52;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+    --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+    --accent:#48b8c1; --accent-soft:#123037; --human:#d99a52;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:17px; line-height:1.65}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+
+  header{border-bottom:1px solid var(--border); padding:56px 0 30px}
+  .eyebrow{font-family:var(--f-mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin:0 0 16px}
+  h1{font-family:var(--f-display); font-weight:600; font-size:2.4rem; line-height:1.1; letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance}
+  .dek{font-size:1.08rem; color:var(--muted); margin:0; max-width:64ch}
+
+  main{padding:14px 0 90px}
+  section{padding:40px 0 0}
+  h2{font-family:var(--f-display); font-weight:600; font-size:1.35rem; letter-spacing:-.01em; margin:0 0 6px}
+  h2 .tick{color:var(--accent); font-weight:500; margin-right:.5ch}
+  .lede{color:var(--muted); margin:0 0 18px}
+  p{margin:0 0 16px}
+  a{color:var(--accent)}
+  strong{font-weight:600; color:var(--ink)}
+  code{font-family:var(--f-mono); font-size:.84em; background:var(--surface-2); padding:.12em .42em; border-radius:3px; color:var(--ink)}
+
+  /* doc cards */
+  .doc{border:1px solid var(--border); border-radius:10px; background:var(--surface); padding:18px 20px; margin-top:14px}
+  .doc h3{font-family:var(--f-display); font-size:1.05rem; font-weight:600; margin:0 0 4px}
+  .doc h3 a{text-decoration:none}
+  .doc .meta{font-family:var(--f-mono); font-size:11px; color:var(--muted); margin:0 0 8px}
+  .doc p{margin:0; font-size:14.5px; color:var(--muted)}
+  .doc p b{color:var(--ink); font-weight:600}
+
+  /* reading order */
+  ol.order{list-style:none; margin:6px 0 0; padding:0; counter-reset:o}
+  ol.order li{counter-increment:o; display:grid; grid-template-columns:26px 1fr; gap:14px; padding:10px 0; border-top:1px solid var(--border)}
+  ol.order li:first-child{border-top:none}
+  ol.order li::before{content:counter(o); font-family:var(--f-mono); font-size:12px; color:var(--accent); padding-top:2px}
+  ol.order p{margin:0; font-size:14.5px; color:var(--muted)}
+  ol.order b{color:var(--ink); font-weight:600}
+
+  /* decision / open lists */
+  ul.pts{list-style:none; margin:6px 0 0; padding:0; display:grid; gap:2px; border:1px solid var(--border); border-radius:10px; overflow:hidden; background:var(--border)}
+  ul.pts li{background:var(--surface); padding:12px 16px; font-size:14.5px; color:var(--muted)}
+  ul.pts li b{color:var(--ink); font-weight:600}
+  ul.pts li .why{color:var(--muted); font-style:italic}
+
+  .note{margin-top:16px; border-left:3px solid var(--human); padding:2px 0 2px 18px}
+  .note p{margin:0 0 8px; font-size:14.5px; color:var(--muted)}
+  .note p:last-child{margin:0}
+  .note b{color:var(--ink); font-weight:600}
+
+  footer{margin-top:44px; border-top:1px solid var(--border); padding:24px 0 0; font-family:var(--f-mono); font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:6px 18px}
+  :where(a):focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  @media (max-width:520px){ h1{font-size:1.9rem} }
+</style>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Data Sense · Agent Builder Capstone</p>
+    <h1>Design Pack — Reading Guide</h1>
+    <p class="dek">Five short docs that describe our design for the platform: the structure, the database, the flow the demo walks, and how the two trickiest pieces — credentials and the agent builder — actually work. Each is a 5–10 minute read.</p>
+  </div>
+</header>
+
+<main>
+  <section class="wrap">
+    <h2><span class="tick">/</span>The documents</h2>
+    <p class="lede">All in <code>AnuragDocs/</code> in the repo. Links open the shared versions.</p>
+
+    <div class="doc">
+      <h3><a href="https://claude.ai/code/artifact/b296a19b-d108-4d09-a059-bdfaf3ec8353">End-to-End Flow</a></h3>
+      <p class="meta">2 min · everyone · demo prep</p>
+      <p>One start-to-finish flowchart of the whole product, no internals. Three phases, four points where it waits for a human, three gates that can send you back.</p>
+    </div>
+
+    <div class="doc">
+      <h3><a href="https://claude.ai/code/artifact/479d78a5-c063-4afa-983c-10af15a7749e">High-Level Architecture</a></h3>
+      <p class="meta">8 min · everyone · start here for internals</p>
+      <p>The whole system in one diagram — clients → App Server → Platform Services (Build / Run / Publish) → Postgres. Plus the six-step flow and a table showing how each of the <b>8 rules</b> is satisfied.</p>
+    </div>
+
+    <div class="doc">
+      <h3><a href="https://claude.ai/code/artifact/935f2fdd-9981-4397-ae5c-52148f8ad98b">Data Model</a></h3>
+      <p class="meta">10 min · backend / DB</p>
+      <p>Every Postgres table with columns and types, the ER diagram, a <b>plain-terms explainer of row-level security</b>, and why the admin queue stays in Postgres rather than NoSQL (with the <code>SKIP LOCKED</code> / outbox patterns).</p>
+    </div>
+
+    <div class="doc">
+      <h3><a href="https://claude.ai/code/artifact/0fa970cf-637f-44eb-bdc1-a8f18642d46f">Connection Data Flow</a></h3>
+      <p class="meta">8 min · anyone touching MCP or credentials</p>
+      <p>Registering an MCP server and discovering its tools; how each tool gets tagged <code>read</code> / <code>write</code> / <code>destructive</code>; how the token is envelope-encrypted; and which parts the task actually mandates vs. what we chose.</p>
+    </div>
+
+    <div class="doc">
+      <h3><a href="https://claude.ai/code/artifact/4d8bb24c-8657-41c9-882a-6d6a296e757f">Agent Builder Data Flow</a></h3>
+      <p class="meta">9 min · anyone touching LangGraph or the builder</p>
+      <p>The Build Orchestrator end to end — the graph, the two pauses and how they survive a restart, <code>generate_config</code> (what the LLM writes vs. what code fills), and <code>score_agent</code> (the deterministic rubric, with a worked example).</p>
+    </div>
+  </section>
+
+  <section class="wrap">
+    <h2><span class="tick">/</span>Suggested order</h2>
+    <ol class="order">
+      <li><p><b>End-to-End Flow</b> — get the shape of the product in your head.</p></li>
+      <li><p><b>High-Level Architecture</b> — the map. Every other doc zooms into one box on this diagram.</p></li>
+      <li><p><b>Data Model</b> — then the two deep-dives in any order:</p></li>
+      <li><p><b>Connection Data Flow</b> — credentials + tool classification.</p></li>
+      <li><p><b>Agent Builder Data Flow</b> — the LangGraph builder.</p></li>
+    </ol>
+  </section>
+
+  <section class="wrap">
+    <h2><span class="tick">/</span>Decisions to know (and push back on if you disagree)</h2>
+    <ul class="pts">
+      <li><b>An agent is a JSON config document, never generated code.</b> <span class="why">One runtime reads any document — gives us versioning, safety, and cross-workspace publishing.</span></li>
+      <li><b>One PostgreSQL for everything, including the admin review queue.</b> <span class="why">Isolation must survive removing the app filter (RLS); decide + resume must be one transaction; "bombardment" is solved with indexes, not a second datastore.</span></li>
+      <li><b>Isolation = row-level security keyed on <code>owner_id</code> + <code>tenant_id</code>.</b> <span class="why">Rule 2 and grading check 1 are user-to-user, not just company-to-company. Six tables carry <code>owner_id</code>.</span></li>
+      <li><b>The MCP registry is per-user.</b> <span class="why">Everyone registers their own servers and connects with their own token. Simpler, fully consistent RLS.</span></li>
+      <li><b>Marketplace + admin-review tables have no RLS — the one deliberate exception.</b> <span class="why">Cross-tenant by design; rows are sanitized on entry; an admin guards the door.</span></li>
+      <li><b>Credentials: envelope encryption (per-connection key, KMS-wrapped).</b> <span class="why">For the capstone the "KMS" is one master key in an env var. A single Fernet key would also pass — this is a strengthening, not a requirement.</span></li>
+      <li><b>Tools are tagged <code>read</code>/<code>write</code>/<code>destructive</code> at registration by a deterministic classifier</b> (fail-safe to <code>write</code>). <span class="why">The approval gate reads that tag from the DB — never the prompt.</span></li>
+      <li><b>Scores are a pure function of the config — no LLM.</b> <span class="why">Every point traceable; publish blocked below threshold; this is how an unguarded write tool can't be published.</span></li>
+      <li><b>Auth is middleware inside the App Server, not a separate service.</b></li>
+      <li><b>Two clients: the web app and the external API.</b> <span class="why">Marketplace and Admin Review are pages inside the web app; both require login.</span></li>
+    </ul>
+  </section>
+
+  <section class="wrap">
+    <h2><span class="tick">/</span>Still open — needs a team call</h2>
+    <ul class="pts">
+      <li><b>Agent config schema details</b> — how <code>coordinator_specialist</code> represents sub-agents, schedule/trigger fields, edit semantics.</li>
+      <li><b>Scoring thresholds</b> — the 60 / 70 cutoffs need checking against real agents.</li>
+      <li><b>The multi-agent demo agent (Rule 8)</b> — coordinator + ≥2 specialists + a human step, built through our own platform.</li>
+      <li><b><code>agent_versions</code> table vs. <code>config</code> on <code>agents</code></b> — our data model uses a versions table; the earlier spec puts config on <code>agents</code>. Pick one.</li>
+      <li><b>HITL for a non-interactive API caller</b> — how an approval pause surfaces to a script.</li>
+    </ul>
+  </section>
+
+  <section class="wrap">
+    <h2><span class="tick">/</span>Two notes</h2>
+    <div class="note">
+      <p><b><code>system-design.html</code></b> at the repo root is an earlier spec by a teammate. These five docs are the current direction — we need to reconcile the two before submission (see the open questions above).</p>
+      <p><b><code>AnuragDocs/DESIGN-NOTES.md</code></b> is the running decision log — every call with its reasoning, plus the box-by-box walkthrough progress. Check it for the latest.</p>
+    </div>
+  </section>
+
+  <footer class="wrap">
+    <span>Data Sense · Agent Builder Capstone</span>
+    <span>Design pack · reading guide</span>
+    <span>2026-09-09</span>
+  </footer>
+</main>

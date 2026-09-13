@@ -1,0 +1,701 @@
+<title>Data Sense Data Model</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/pgsql.min.js"></script>
+<style>
+  :root{
+    --bg:#f3f5f7; --surface:#ffffff; --surface-2:#e9edf1; --ink:#1a2129;
+    --muted:#586573; --border:#d3dae1; --line:#9aa7b2;
+    --accent:#0e7b85; --accent-soft:#dceff0;
+    --human:#a9631a; --human-soft:#f2e7d6;
+    --good:#2f7d4f;
+    --maxw:760px; --wide:1000px;
+    --f-display:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --f-body:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+    --f-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+      --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+      --accent:#48b8c1; --accent-soft:#123037;
+      --human:#d99a52; --human-soft:#2c2318;
+      --good:#63b585;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+    --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+    --accent:#48b8c1; --accent-soft:#123037;
+    --human:#d99a52; --human-soft:#2c2318;
+    --good:#63b585;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--f-body); font-size:17px; line-height:1.65;
+  }
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  .bleed{max-width:var(--wide); margin:0 auto; padding:0 24px}
+
+  header{
+    border-bottom:1px solid var(--border); padding:60px 0 32px;
+    background:
+      linear-gradient(var(--bg),var(--bg)) padding-box,
+      repeating-linear-gradient(90deg,transparent 0 26px,color-mix(in srgb,var(--line) 22%,transparent) 26px 27px) border-box;
+  }
+  .eyebrow{
+    font-family:var(--f-mono); font-size:12px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 16px;
+  }
+  h1{
+    font-family:var(--f-display); font-weight:600; font-size:2.5rem;
+    line-height:1.1; letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance;
+  }
+  .dek{font-size:1.1rem; color:var(--muted); margin:0 0 24px; max-width:62ch}
+  .meta{
+    display:flex; flex-wrap:wrap; gap:8px 20px;
+    font-family:var(--f-mono); font-size:12px; color:var(--muted);
+  }
+  .meta span::before{content:"— "; color:var(--line)}
+  nav.toc{
+    margin:28px 0 0; padding:16px 0 0; border-top:1px solid var(--border);
+    display:flex; flex-wrap:wrap; gap:6px 22px; font-family:var(--f-mono); font-size:12.5px;
+  }
+  nav.toc a{color:var(--muted); text-decoration:none}
+  nav.toc a:hover{color:var(--accent)}
+  nav.toc a::before{content:attr(data-n) " "; color:var(--accent); opacity:.7}
+
+  main{padding:8px 0 90px}
+  section{padding:46px 0 0}
+  h2{
+    font-family:var(--f-display); font-weight:600; font-size:1.5rem;
+    letter-spacing:-.01em; margin:0 0 6px; text-wrap:balance;
+  }
+  h2 .tick{color:var(--accent); font-weight:500; margin-right:.5ch}
+  .lede{color:var(--muted); margin:0 0 22px}
+  p{margin:0 0 18px}
+  strong{font-weight:600; color:var(--ink)}
+  a{color:var(--accent)}
+  :where(a,summary):focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px}
+  code.inl{
+    font-family:var(--f-mono); font-size:.84em;
+    background:var(--surface-2); padding:.12em .42em; border-radius:3px; color:var(--ink);
+  }
+
+  .thesis{
+    font-family:var(--f-display); font-size:1.2rem; line-height:1.5; font-weight:400;
+    color:var(--ink); border-left:3px solid var(--accent); padding:4px 0 4px 22px; margin:0;
+  }
+  .thesis b{font-weight:600}
+
+  /* ---- ER figure ---- */
+  figure{margin:26px 0 0; padding:0}
+  .figframe{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:22px 18px 14px; overflow-x:auto;
+  }
+  .figframe svg{display:block; min-width:720px; max-width:100%; height:auto; color:var(--line)}
+  figcaption{
+    font-family:var(--f-body); font-size:14.5px; color:var(--muted);
+    line-height:1.55; margin-top:14px; max-width:80ch;
+  }
+  figcaption b{color:var(--ink); font-weight:600}
+  .legend{
+    display:flex; flex-wrap:wrap; gap:6px 20px; margin-top:12px;
+    font-family:var(--f-mono); font-size:11px; color:var(--muted);
+  }
+  .legend i{font-style:normal; display:inline-flex; align-items:center; gap:7px}
+  .legend .sw{width:22px; border-top:2px solid var(--line)}
+  .legend .sw.acc{border-color:var(--accent)}
+  .legend .sw.dash{border-top-style:dashed}
+
+  .dgm text{font-family:var(--f-mono); fill:var(--ink)}
+  .dgm .tb{fill:var(--surface); stroke:var(--border); stroke-width:1.2}
+  .dgm .tb-top{fill:var(--accent)}
+  .dgm .zone{fill:none; stroke:var(--line); stroke-width:1.2; stroke-dasharray:3 3}
+  .dgm .zone-r{stroke:var(--human)}
+  .dgm .zlabel{font-size:10px; fill:var(--muted); letter-spacing:.08em}
+  .dgm .tname{font-size:12px; fill:var(--ink)}
+  .dgm .tsub{font-size:9px; fill:var(--muted)}
+  .dgm .fk{stroke:var(--line); stroke-width:1.3; fill:none}
+  .dgm .fk--x{stroke:var(--accent); stroke-width:1.7}
+  .dgm .fk--dash{stroke-dasharray:5 4}
+  .dgm .elabel{
+    font-size:9px; fill:var(--muted);
+    paint-order:stroke; stroke:var(--surface); stroke-width:3px; stroke-linejoin:round;
+  }
+  .dgm marker#fkm path{fill:var(--line)}
+  .dgm marker#fkx path{fill:var(--accent)}
+
+  /* ---- schema tables ---- */
+  .group-intro{color:var(--muted); margin:0 0 4px}
+  article.tbl{
+    margin-top:26px; border:1px solid var(--border); border-radius:10px;
+    background:var(--surface); overflow:hidden;
+  }
+  article.tbl > h3{
+    font-family:var(--f-mono); font-size:14px; font-weight:500; margin:0;
+    padding:13px 18px; background:var(--surface-2); border-bottom:1px solid var(--border);
+    display:flex; align-items:center; gap:10px; flex-wrap:wrap;
+  }
+  article.tbl > h3 .rls{
+    font-family:var(--f-mono); font-size:9.5px; letter-spacing:.08em; text-transform:uppercase;
+    color:var(--accent); border:1px solid var(--accent); border-radius:3px; padding:1px 5px;
+  }
+  article.tbl > h3 .rls.exc{color:var(--human); border-color:var(--human)}
+  article.tbl > .purpose{
+    margin:0; padding:12px 18px; font-size:14.5px; color:var(--muted);
+    border-bottom:1px solid var(--border);
+  }
+  .schemawrap{overflow-x:auto}
+  table.schema{border-collapse:collapse; width:100%; min-width:560px; font-size:14px}
+  table.schema th{
+    font-family:var(--f-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); text-align:left; padding:9px 18px; border-bottom:1px solid var(--border);
+  }
+  table.schema td{padding:9px 18px; border-bottom:1px solid var(--border); vertical-align:top}
+  table.schema tr:last-child td{border-bottom:none}
+  td.col{font-family:var(--f-mono); font-size:12.5px; color:var(--ink); white-space:nowrap}
+  td.typ{font-family:var(--f-mono); font-size:11.5px; color:var(--accent); white-space:nowrap}
+  td.note{color:var(--muted); font-size:13.5px}
+  td.note b{color:var(--ink); font-weight:600}
+  .badge{
+    font-family:var(--f-mono); font-size:9px; letter-spacing:.05em; text-transform:uppercase;
+    padding:1px 4px; border-radius:3px; border:1px solid; vertical-align:middle; margin-right:5px;
+    white-space:nowrap;
+  }
+  .b-pk{color:var(--human); border-color:var(--human)}
+  .b-fk{color:var(--accent); border-color:var(--accent)}
+  .b-uq{color:var(--muted); border-color:var(--line)}
+  article.tbl > .extra{
+    margin:0; padding:12px 18px; font-size:13px; color:var(--muted); background:var(--surface-2);
+    border-top:1px solid var(--border); font-family:var(--f-body);
+  }
+  article.tbl > .extra b{font-family:var(--f-mono); font-size:11px; text-transform:uppercase; letter-spacing:.06em; color:var(--muted); font-weight:500}
+  article.tbl > .extra code{font-family:var(--f-mono); font-size:12px; color:var(--ink)}
+
+  /* ---- code ---- */
+  pre{
+    margin:18px 0 0; background:var(--surface); border:1px solid var(--border);
+    border-left:3px solid var(--accent); border-radius:8px; padding:16px 18px; overflow-x:auto;
+  }
+  pre code{font-family:var(--f-mono); font-size:12.5px; line-height:1.65; color:var(--ink); white-space:pre}
+  .hljs{color:var(--ink); background:transparent}
+  .hljs-keyword,.hljs-literal{color:var(--accent); font-weight:500}
+  .hljs-string{color:var(--human)}
+  .hljs-number{color:var(--good)}
+  .hljs-comment{color:var(--muted); font-style:italic}
+  .hljs-type,.hljs-built_in{color:var(--ink)}
+  .hljs-operator,.hljs-punctuation{color:var(--muted)}
+
+  .subh{font-family:var(--f-display); font-size:1.05rem; font-weight:600; margin:24px 0 0}
+  .rlsbox{margin-top:16px; border:1px dashed var(--human); border-radius:10px; padding:14px 18px; background:color-mix(in srgb,var(--human) 7%,transparent)}
+  .rlsbox p{margin:0; font-size:14px; color:var(--muted)}
+  .rlsbox b{color:var(--ink); font-weight:600}
+  .rlsbox code{font-family:var(--f-mono); font-size:12px; color:var(--ink)}
+
+  /* ---- why-postgres cards ---- */
+  .qgrid{display:grid; gap:2px; margin-top:8px; background:var(--border); border:1px solid var(--border); border-radius:10px; overflow:hidden}
+  .qgrid > div{background:var(--surface); padding:18px 20px}
+  .qgrid h3{font-family:var(--f-display); font-size:1rem; font-weight:600; margin:0 0 6px}
+  .qgrid p{margin:0; font-size:14px; color:var(--muted)}
+  @media(min-width:640px){.qgrid{grid-template-columns:1fr 1fr}}
+
+  footer{
+    border-top:1px solid var(--border); padding:26px 0 60px;
+    font-family:var(--f-mono); font-size:12px; color:var(--muted);
+    display:flex; flex-wrap:wrap; gap:6px 18px;
+  }
+  @media (max-width:560px){ h1{font-size:2rem} }
+</style>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Data Sense · Agent Builder Capstone</p>
+    <h1>Data Model</h1>
+    <p class="dek">The lowest-level Postgres schema — how tenancy, agent versions, paused graph runs and the admin review queue are laid out, and why the queue that worries you about admin overload stays in a relational database.</p>
+    <div class="meta">
+      <span>Working draft</span><span>2026-09-09</span><span>Companion to the architecture doc</span>
+    </div>
+    <nav class="toc">
+      <a href="#why" data-n="00">One Postgres</a>
+      <a href="#er" data-n="01">The tables at a glance</a>
+      <a href="#tenancy" data-n="02">Tenancy</a>
+      <a href="#registry" data-n="03">Registry &amp; credentials</a>
+      <a href="#agents" data-n="04">Agents &amp; versions</a>
+      <a href="#runs" data-n="05">Graph runs</a>
+      <a href="#review" data-n="06">The review island</a>
+      <a href="#rls" data-n="07">Row-level security</a>
+      <a href="#queue" data-n="08">Draining the queue</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section id="why" class="wrap">
+    <p class="thesis">"Admin gets bombarded" is a <b>workflow</b> problem, not a storage one. Submissions are human-triggered — someone clicks Publish — so even a large org produces ~10³ a day; with a three-day SLA the pending set is a few thousand rows. A partial index scans that in microseconds. Moving it to NoSQL would cost you <b>two grading checks</b>, not buy you scale.</p>
+    <div class="qgrid">
+      <div>
+        <h3>Isolation is RLS (Check&nbsp;1)</h3>
+        <p>Tenant + user isolation is a Postgres row-security policy, not an app filter. Delete every <code class="inl">WHERE owner_id = ?</code> in the code and the database still returns only your rows — see <a href="#rls">Row-level security</a>.</p>
+      </div>
+      <div>
+        <h3>Decide + resume is atomic (Checks&nbsp;5,&nbsp;6)</h3>
+        <p>"Approve" must record the decision <em>and</em> schedule the run's resume in one transaction. Two datastores means a dual-write and a new failure mode: approved but never resumed.</p>
+      </div>
+      <div>
+        <h3>The audit trail is relational</h3>
+        <p>Who approved what, when, with what notes — a compliance artifact that wants to be queried and joined to <code class="inl">users</code>.</p>
+      </div>
+      <div>
+        <h3>You still get schemaless where it helps</h3>
+        <p><code class="inl">jsonb</code> columns hold the loose-shaped parts — the config document, the sanitized manifest, score breakdowns, LangGraph's checkpoint blobs — inside the same database.</p>
+      </div>
+    </div>
+  </section>
+
+  <section id="er">
+    <div class="wrap">
+      <h2><span class="tick">/</span>The tables at a glance</h2>
+      <p class="lede">Eight tables inside one row-level-security boundary; the review queue is the single deliberate exception, reached only by the admin service and sanitized on the way in.</p>
+    </div>
+    <div class="bleed">
+      <figure>
+        <div class="figframe">
+          <svg class="dgm" viewBox="0 0 980 560" role="img" aria-label="Entity diagram: tenants, users, mcp_servers, mcp_tools, connections, agents, agent_versions and graph_runs sit inside a dashed boundary labelled tenant-scoped row-level security. To the right, review_submissions and resume_outbox sit in a separate boundary labelled cross-tenant admin only. The only link across is graph_run_id from graph_runs to review_submissions, sanitized on entry; a worker reads resume_outbox to resume the paused run.">
+            <defs>
+              <marker id="fkm" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+              <marker id="fkx" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+            </defs>
+
+            <!-- left zone -->
+            <rect class="zone" x="16" y="46" width="628" height="496" rx="10"/>
+            <text class="zlabel" x="30" y="38">ISOLATED — RLS ON owner_id + tenant_id · delete the app filter, isolation still holds</text>
+
+            <!-- table helper: rect + accent top + name -->
+            <!-- tenants -->
+            <rect class="tb" x="48" y="74" width="132" height="34" rx="4"/><rect class="tb-top" x="48" y="74" width="132" height="3"/><text class="tname" x="114" y="95" text-anchor="middle">tenants</text>
+            <!-- users -->
+            <rect class="tb" x="48" y="156" width="132" height="34" rx="4"/><rect class="tb-top" x="48" y="156" width="132" height="3"/><text class="tname" x="114" y="177" text-anchor="middle">users</text>
+            <!-- agents -->
+            <rect class="tb" x="48" y="268" width="132" height="34" rx="4"/><rect class="tb-top" x="48" y="268" width="132" height="3"/><text class="tname" x="114" y="289" text-anchor="middle">agents</text>
+            <!-- agent_versions -->
+            <rect class="tb" x="244" y="268" width="170" height="34" rx="4"/><rect class="tb-top" x="244" y="268" width="170" height="3"/><text class="tname" x="329" y="289" text-anchor="middle">agent_versions</text>
+            <!-- mcp_servers -->
+            <rect class="tb" x="244" y="74" width="146" height="34" rx="4"/><rect class="tb-top" x="244" y="74" width="146" height="3"/><text class="tname" x="317" y="95" text-anchor="middle">mcp_servers</text>
+            <!-- mcp_tools -->
+            <rect class="tb" x="454" y="74" width="132" height="34" rx="4"/><rect class="tb-top" x="454" y="74" width="132" height="3"/><text class="tname" x="520" y="95" text-anchor="middle">mcp_tools</text>
+            <!-- connections -->
+            <rect class="tb" x="244" y="156" width="156" height="34" rx="4"/><rect class="tb-top" x="244" y="156" width="156" height="3"/><text class="tname" x="322" y="177" text-anchor="middle">connections</text>
+            <!-- graph_runs -->
+            <rect class="tb" x="244" y="372" width="170" height="40" rx="4"/><rect class="tb-top" x="244" y="372" width="170" height="3"/><text class="tname" x="329" y="391" text-anchor="middle">graph_runs</text><text class="tsub" x="329" y="404" text-anchor="middle">interrupted / running</text>
+            <!-- checkpoints -->
+            <rect class="tb" x="454" y="366" width="164" height="52" rx="4"/><rect class="tb-top" x="454" y="366" width="164" height="3"/><text class="tname" x="536" y="386" text-anchor="middle">checkpoints</text><text class="tsub" x="536" y="399" text-anchor="middle">+ _writes · _blobs</text><text class="tsub" x="536" y="410" text-anchor="middle">(langgraph)</text>
+
+            <!-- FKs -->
+            <path class="fk" d="M114 156 V108" marker-end="url(#fkm)"/><text class="elabel" x="118" y="134">tenant_id</text>
+            <path class="fk" d="M454 91 H390" marker-end="url(#fkm)"/><text class="elabel" x="422" y="86">server_id</text>
+            <path class="fk" d="M312 156 V108" marker-end="url(#fkm)"/><text class="elabel" x="316" y="134">server_id</text>
+            <path class="fk" d="M244 285 H180" marker-end="url(#fkm)"/><text class="elabel" x="212" y="280">agent_id</text>
+            <path class="fk" d="M329 302 V372" marker-end="url(#fkm)"/><text class="elabel" x="333" y="340">agent_version_id</text>
+            <path class="fk fk--dash" d="M414 392 H454" marker-end="url(#fkm)"/><text class="elabel" x="434" y="386">thread_id</text>
+
+            <text class="tsub" x="48" y="470" style="font-size:9.5px">every table carries owner_id + tenant_id;</text>
+            <text class="tsub" x="48" y="484" style="font-size:9.5px">one RLS policy per table does the filtering — no app WHERE.</text>
+
+            <!-- right zone -->
+            <rect class="zone zone-r" x="694" y="150" width="266" height="300" rx="10"/>
+            <text class="zlabel" x="706" y="142" style="fill:var(--human)">CROSS-TENANT — ADMIN SERVICE ONLY</text>
+
+            <rect class="tb" x="722" y="196" width="212" height="44" rx="4"/><rect class="tb-top" x="722" y="196" width="212" height="3" style="fill:var(--human)"/><text class="tname" x="828" y="214" text-anchor="middle">review_submissions</text><text class="tsub" x="828" y="228" text-anchor="middle">sanitized_manifest · scores</text>
+            <rect class="tb" x="722" y="320" width="212" height="40" rx="4"/><rect class="tb-top" x="722" y="320" width="212" height="3" style="fill:var(--human)"/><text class="tname" x="828" y="339" text-anchor="middle">resume_outbox</text><text class="tsub" x="828" y="352" text-anchor="middle">transactional outbox</text>
+
+            <!-- cross-boundary -->
+            <path class="fk fk--x" d="M414 388 C560 360 620 250 722 224" marker-end="url(#fkx)"/>
+            <text class="elabel" x="556" y="300" style="stroke-width:3.5px">graph_run_id · sanitized on entry, no tenant data</text>
+            <path class="fk fk--x" d="M828 240 V320" marker-end="url(#fkx)"/><text class="elabel" x="832" y="284">on approve — same txn</text>
+            <path class="fk fk--x fk--dash" d="M722 348 C540 420 460 420 360 412" marker-end="url(#fkx)"/>
+            <text class="elabel" x="470" y="432">worker → Command(resume=…)</text>
+          </svg>
+        </div>
+        <figcaption>
+          <b>Eight tables, one boundary.</b> Every isolated table carries <code class="inl">owner_id</code> + <code class="inl">tenant_id</code> and an RLS policy keyed on the signed-in user; the app connects as a non-superuser role and sets both per request.
+          <b>The review island is the exception.</b> The admin service reaches it through a separate role, and the Sanitizer strips every tenant-identifying field before the row exists.
+          <b>One thread back in.</b> <code class="inl">graph_run_id</code> is the only link across the boundary — used to wake the paused LangGraph run once an admin decides.
+        </figcaption>
+      </figure>
+      <div class="legend">
+        <i><span class="sw"></span> foreign key</i>
+        <i><span class="sw acc"></span> only cross-boundary link</i>
+        <i><span class="sw dash"></span> async / by key, not a FK</i>
+      </div>
+    </div>
+  </section>
+
+  <section id="tenancy" class="wrap">
+    <h2><span class="tick">/</span>Tenancy</h2>
+    <p class="group-intro">The root of isolation. Everything else hangs a <code class="inl">tenant_id</code> off <code class="inl">tenants</code>.</p>
+
+    <article class="tbl">
+      <h3>tenants <span class="rls">RLS root</span></h3>
+      <p class="purpose">One row per company. The value every other policy compares against.</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span> <code>default gen_random_uuid()</code></td></tr>
+            <tr><td class="col">name</td><td class="typ">text</td><td class="note"><b>not null</b></td></tr>
+            <tr><td class="col">created_at</td><td class="typ">timestamptz</td><td class="note"><code>default now()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="tbl">
+      <h3>users <span class="rls">RLS</span></h3>
+      <p class="purpose">A person in one company. <code class="inl">is_admin</code> marks the platform-wide reviewer who guards the marketplace.</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+            <tr><td class="col">tenant_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → tenants(id) · <b>not null</b></td></tr>
+            <tr><td class="col">email</td><td class="typ">citext</td><td class="note"><b>not null</b></td></tr>
+            <tr><td class="col">is_admin</td><td class="typ">boolean</td><td class="note"><code>default false</code> — platform reviewer, not a per-tenant role</td></tr>
+            <tr><td class="col">created_at</td><td class="typ">timestamptz</td><td class="note"><code>default now()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="extra"><b>Unique</b> <code>(tenant_id, email)</code></p>
+    </article>
+  </section>
+
+  <section id="registry" class="wrap">
+    <h2><span class="tick">/</span>Registry &amp; credentials</h2>
+    <p class="group-intro">MCP servers, the tools the platform read off them, and the encrypted tokens — plaintext never lands here.</p>
+
+    <article class="tbl">
+      <h3>mcp_servers <span class="rls">RLS</span></h3>
+      <p class="purpose">An MCP endpoint one user registered. The platform discovers its tools at registration and re-checks liveness on a schedule. Each user keeps their own registry — nothing shared (unless marked open, Rule 5).</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+            <tr><td class="col">owner_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → users(id) · <b>not null</b> — the RLS policy keys on this</td></tr>
+            <tr><td class="col">tenant_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → tenants(id) · <b>not null</b> · second barrier</td></tr>
+            <tr><td class="col">name</td><td class="typ">text</td><td class="note"><b>not null</b></td></tr>
+            <tr><td class="col">address</td><td class="typ">text</td><td class="note"><b>not null</b></td></tr>
+            <tr><td class="col">transport</td><td class="typ">text</td><td class="note"><code>streamable_http | sse | stdio</code> — only <code>streamable_http</code> is implemented; the rest are rejected at registration, not silently attempted</td></tr>
+            <tr><td class="col">visibility</td><td class="typ">text</td><td class="note"><code>open | private</code> — Rule 5, shared with everyone vs. private to one company</td></tr>
+            <tr><td class="col">auth_spec</td><td class="typ">jsonb</td><td class="note">credential shape the Connections form renders from — holds no value. Registrant-defined at registration, never derived from the server (real MCP servers don't advertise it) — see connection-data-flow.html §authspec</td></tr>
+            <tr><td class="col">status</td><td class="typ">text</td><td class="note"><code>ok | dead | unknown</code> — written by the scheduled liveness check, not by registration</td></tr>
+            <tr><td class="col">last_checked_at</td><td class="typ">timestamptz</td><td class="note">set by the same scheduled check; also stamped at registration since discovery just succeeded</td></tr>
+            <tr><td class="col">created_at</td><td class="typ">timestamptz</td><td class="note"><code>default now()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="extra"><b>Unique</b> <code>(owner_id, address)</code> — a user registers a given endpoint once</p>
+    </article>
+
+    <article class="tbl">
+      <h3>mcp_tools <span class="rls">RLS</span></h3>
+      <p class="purpose">One tool the server reported. <code class="inl">sensitivity</code> is the marking that drives the approval gate in Rule&nbsp;4 — recorded by the platform, never typed by a user.</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+            <tr><td class="col">owner_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → users(id) · denormalized from <code>mcp_servers</code> so the RLS check is local</td></tr>
+            <tr><td class="col">tenant_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → tenants(id) · <b>not null</b></td></tr>
+            <tr><td class="col">server_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → mcp_servers(id) <code>on delete cascade</code></td></tr>
+            <tr><td class="col">name</td><td class="typ">text</td><td class="note"><b>not null</b></td></tr>
+            <tr><td class="col">description</td><td class="typ">text</td><td class="note">as reported by the server</td></tr>
+            <tr><td class="col">input_schema</td><td class="typ">jsonb</td><td class="note">the tool's declared arguments</td></tr>
+            <tr><td class="col">sensitivity</td><td class="typ">text</td><td class="note"><b>check in</b> <code>('read','write','destructive')</code></td></tr>
+            <tr><td class="col">sensitivity_source</td><td class="typ">text</td><td class="note"><code>override | annotation | heuristic | default</code> — traceability for how <code>classify()</code> landed on it</td></tr>
+            <tr><td class="col">annotations</td><td class="typ">jsonb</td><td class="note">the raw MCP hints as received, for audit — never trusted alone, only to make a classification <em>more</em> restrictive</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="extra"><b>Unique</b> <code>(server_id, name)</code></p>
+    </article>
+
+    <article class="tbl">
+      <h3>connections <span class="rls">RLS</span></h3>
+      <p class="purpose">One user's credential for one server, envelope-encrypted. Rule&nbsp;3: search this table for the plaintext token and you must not find it.</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+            <tr><td class="col">tenant_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → tenants(id) · <b>not null</b></td></tr>
+            <tr><td class="col">server_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → mcp_servers(id)</td></tr>
+            <tr><td class="col">ciphertext</td><td class="typ">bytea</td><td class="note"><b>not null</b> — AEAD-encrypted <code>secret:true</code> auth_spec fields, never the plaintext</td></tr>
+            <tr><td class="col">wrapped_dek</td><td class="typ">bytea</td><td class="note"><b>not null</b> — data key wrapped by the KMS master key</td></tr>
+            <tr><td class="col">config</td><td class="typ">jsonb</td><td class="note">the <code>secret:false</code> auth_spec fields (base URL, org name) — useful, not sensitive, stored plain</td></tr>
+            <tr><td class="col">owner_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → users(id) · <b>not null</b> — whose connection it is; the RLS policy keys on this</td></tr>
+            <tr><td class="col">created_at</td><td class="typ">timestamptz</td><td class="note"><code>default now()</code> — the Connections screen's "Added" column</td></tr>
+            <tr><td class="col">status</td><td class="typ">text</td><td class="note"><code>active | expired</code>, <code>default 'active'</code> — flips to <code>expired</code> when the scheduled liveness check gets a 401/403 back <em>with this credential attached</em>; reset to <code>active</code> the moment the credential is replaced via Connect. Distinct from <code>mcp_servers.status</code>: a rejected credential means the server is reachable, just not by this token — the server itself still reads <code>ok</code></td></tr>
+            <tr><td class="col">last_used_at</td><td class="typ">timestamptz</td><td class="note">stamped every time this credential is actually attached to an outgoing call — today that's only the liveness check (§connection-data-flow.html); becomes the same call site for a real tool invocation once the Run lane exists</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="extra"><b>Unique</b> <code>(owner_id, server_id)</code> — one connection per server per user ("I paste mine in once"). The runtime decrypts in memory, uses it, and drops it; the plaintext is never written back anywhere.</p>
+    </article>
+  </section>
+
+  <section id="agents" class="wrap">
+    <h2><span class="tick">/</span>Agents &amp; versions</h2>
+    <p class="group-intro">An agent is a name; a version is the configuration document plus its scores. The runtime only ever reads a version.</p>
+
+    <article class="tbl">
+      <h3>agents <span class="rls">RLS</span></h3>
+      <p class="purpose">The stable identity a user sees as a card in My Agents.</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+            <tr><td class="col">tenant_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → tenants(id) · <b>not null</b></td></tr>
+            <tr><td class="col">name</td><td class="typ">text</td><td class="note"><b>not null</b></td></tr>
+            <tr><td class="col">owner_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → users(id) · <b>not null</b> — the RLS policy keys on this</td></tr>
+            <tr><td class="col">created_at</td><td class="typ">timestamptz</td><td class="note"><code>default now()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </article>
+
+    <article class="tbl">
+      <h3>agent_versions <span class="rls">RLS</span></h3>
+      <p class="purpose">The heart of Rule&nbsp;1. <code class="inl">config</code> is the document the runtime assembles — graph shape, tool refs by capability, interrupt points, prompts. Scores are computed deterministically and stored with their breakdown (Rule&nbsp;6).</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+            <tr><td class="col">agent_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → agents(id) <code>on delete cascade</code></td></tr>
+            <tr><td class="col">owner_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → users(id) · denormalized from <code>agents</code> so the RLS check is a local column compare</td></tr>
+            <tr><td class="col">tenant_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → tenants(id) · <b>not null</b> · denormalized too</td></tr>
+            <tr><td class="col">version</td><td class="typ">int</td><td class="note"><b>not null</b> — monotonic per agent</td></tr>
+            <tr><td class="col">config</td><td class="typ">jsonb</td><td class="note"><b>not null</b> — the configuration document; no credentials, no company data</td></tr>
+            <tr><td class="col">effectiveness_score</td><td class="typ">numeric(5,2)</td><td class="note">how well it works</td></tr>
+            <tr><td class="col">safety_score</td><td class="typ">numeric(5,2)</td><td class="note">how safely it is set up</td></tr>
+            <tr><td class="col">score_breakdown</td><td class="typ">jsonb</td><td class="note">every factor that produced the two numbers — the "point at exactly why"</td></tr>
+            <tr><td class="col">status</td><td class="typ">text</td><td class="note"><b>check in</b> <code>('draft','deployed','in_review','published','archived')</code></td></tr>
+            <tr><td class="col">created_at</td><td class="typ">timestamptz</td><td class="note"><code>default now()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="extra"><b>Unique</b> <code>(agent_id, version)</code> &nbsp;·&nbsp; <b>Index</b> <code>(owner_id, status)</code> for the My Agents listing</p>
+    </article>
+  </section>
+
+  <section id="runs" class="wrap">
+    <h2><span class="tick">/</span>Graph runs</h2>
+    <p class="group-intro">Every place a LangGraph graph pauses. LangGraph's own checkpoint tables are created by the Postgres checkpointer and sit right next to this — same database, same transaction boundary, so a pause is durable across restarts (checks&nbsp;5&nbsp;&amp;&nbsp;6).</p>
+
+    <article class="tbl">
+      <h3>graph_runs <span class="rls">RLS</span></h3>
+      <p class="purpose">A build, a playground session, or a review — each keyed to a LangGraph <code class="inl">thread_id</code>. When <code class="inl">status = 'interrupted'</code>, <code class="inl">interrupt_payload</code> holds what the UI needs to render the prompt.</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+            <tr><td class="col">owner_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → users(id) · <b>not null</b> — the RLS policy keys on this</td></tr>
+            <tr><td class="col">tenant_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → tenants(id) · <b>not null</b></td></tr>
+            <tr><td class="col">agent_version_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → agent_versions(id) · null during the first build</td></tr>
+            <tr><td class="col">kind</td><td class="typ">text</td><td class="note"><b>check in</b> <code>('build','playground','review')</code></td></tr>
+            <tr><td class="col">thread_id</td><td class="typ">text</td><td class="note"><span class="badge b-uq">UQ</span> <b>not null</b> — the LangGraph thread key</td></tr>
+            <tr><td class="col">status</td><td class="typ">text</td><td class="note"><b>check in</b> <code>('running','interrupted','completed','failed')</code></td></tr>
+            <tr><td class="col">interrupt_kind</td><td class="typ">text</td><td class="note"><code>('select_servers','add_connection','await_approval')</code></td></tr>
+            <tr><td class="col">interrupt_payload</td><td class="typ">jsonb</td><td class="note">what to show the human at the pause</td></tr>
+            <tr><td class="col">updated_at</td><td class="typ">timestamptz</td><td class="note">touched on every state transition</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="extra"><b>Index</b> <code>(owner_id, status)</code> partial <code>where status = 'interrupted'</code> — the "what is waiting on me" list</p>
+    </article>
+  </section>
+
+  <section id="review" class="wrap">
+    <h2><span class="tick">/</span>The review island</h2>
+    <p class="group-intro">Cross-tenant <em>by design</em> — the marketplace door is the one place isolation is relaxed, which is exactly why an admin guards it. No <code class="inl">tenant_id</code>, no RLS. The tenant linkage stays behind <code class="inl">graph_runs</code>; these two tables carry only the sanitized artifact and a run reference.</p>
+
+    <article class="tbl">
+      <h3>review_submissions <span class="rls exc">no RLS — exception</span></h3>
+      <p class="purpose">What an admin actually sees. The Sanitizer writes this row, so the raw config with any planted confidential material (Rule&nbsp;5) never reaches it.</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">uuid</td><td class="note"><span class="badge b-pk">PK</span></td></tr>
+            <tr><td class="col">graph_run_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → graph_runs(id) — the only way back to a tenant; used to resume</td></tr>
+            <tr><td class="col">sanitized_manifest</td><td class="typ">jsonb</td><td class="note"><b>not null</b> — name, description, capabilities, access <em>kinds</em>. Nothing tenant-identifying.</td></tr>
+            <tr><td class="col">effectiveness_score</td><td class="typ">numeric(5,2)</td><td class="note"><b>not null</b></td></tr>
+            <tr><td class="col">safety_score</td><td class="typ">numeric(5,2)</td><td class="note"><b>not null</b></td></tr>
+            <tr><td class="col">score_breakdown</td><td class="typ">jsonb</td><td class="note"><b>not null</b> — so the admin sees why, not a guess</td></tr>
+            <tr><td class="col">status</td><td class="typ">text</td><td class="note"><code>default 'pending'</code> · <b>check in</b> <code>('pending','in_review','approved','changes_requested','rejected')</code></td></tr>
+            <tr><td class="col">priority</td><td class="typ">int</td><td class="note"><code>default 100</code> — triage lever; e.g. any <code>destructive</code> tool → front of queue</td></tr>
+            <tr><td class="col">claimed_by</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → users(id) · set when an admin pulls it</td></tr>
+            <tr><td class="col">claimed_at</td><td class="typ">timestamptz</td><td class="note"></td></tr>
+            <tr><td class="col">decided_by</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → users(id)</td></tr>
+            <tr><td class="col">decided_at</td><td class="typ">timestamptz</td><td class="note"></td></tr>
+            <tr><td class="col">decision_notes</td><td class="typ">text</td><td class="note">shown to the owner on "send back"</td></tr>
+            <tr><td class="col">submitted_at</td><td class="typ">timestamptz</td><td class="note"><code>default now()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="extra">
+        <b>Unique (partial)</b> <code>(graph_run_id) where status in ('pending','in_review','changes_requested')</code> — resubmits update, they never stack.<br>
+        <b>Index (partial)</b> <code>(priority, submitted_at) where status = 'pending'</code> — the dashboard's hot scan; only ever covers the open set.
+      </p>
+    </article>
+
+    <article class="tbl">
+      <h3>resume_outbox <span class="rls exc">no RLS — exception</span></h3>
+      <p class="purpose">Transactional outbox. The decision and the intent to wake the run commit together; a worker drains this and calls <code class="inl">graph.invoke(Command(resume=…))</code>.</p>
+      <div class="schemawrap">
+        <table class="schema">
+          <thead><tr><th>Column</th><th>Type</th><th>Notes</th></tr></thead>
+          <tbody>
+            <tr><td class="col">id</td><td class="typ">bigint</td><td class="note"><span class="badge b-pk">PK</span> <code>generated always as identity</code></td></tr>
+            <tr><td class="col">graph_run_id</td><td class="typ">uuid</td><td class="note"><span class="badge b-fk">FK</span> → graph_runs(id)</td></tr>
+            <tr><td class="col">resume_value</td><td class="typ">jsonb</td><td class="note"><b>not null</b> — e.g. <code>{"approved": true}</code> or <code>{"approved": false, "notes": "…"}</code></td></tr>
+            <tr><td class="col">processed_at</td><td class="typ">timestamptz</td><td class="note">null until the worker has resumed the run</td></tr>
+            <tr><td class="col">created_at</td><td class="typ">timestamptz</td><td class="note"><code>default now()</code></td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="extra"><b>Index (partial)</b> <code>(created_at) where processed_at is null</code></p>
+    </article>
+  </section>
+
+  <section id="rls" class="wrap">
+    <h2><span class="tick">/</span>Row-level security — in plain terms</h2>
+    <p class="lede">The structural half of Rule&nbsp;2. Instead of every query remembering <code class="inl">WHERE owner_id = ?</code>, PostgreSQL attaches the filter to the table itself and applies it to every statement — so there is no filter to forget.</p>
+
+    <p><strong>A policy is a per-row test.</strong> It is a boolean expression the database evaluates for each row. Rows where it is false are not "access denied" — they are simply invisible: they don't come back from a <code class="inl">SELECT</code>, an <code class="inl">UPDATE</code> or <code class="inl">DELETE</code> can't touch them, and <code class="inl">WITH CHECK</code> stops an <code class="inl">INSERT</code> from writing a row that wouldn't be yours.</p>
+
+    <h3 class="subh">The policy on every user-owned table</h3>
+    <pre><code class="language-pgsql">alter table agents enable row level security;
+alter table agents force  row level security;   -- applies even to the role that owns the table
+
+create policy owner_isolation on agents
+  using      (owner_id  = current_setting('app.user_id')::uuid
+          and tenant_id = current_setting('app.tenant_id')::uuid)   -- second barrier
+  with check (owner_id  = current_setting('app.user_id')::uuid
+          and tenant_id = current_setting('app.tenant_id')::uuid);
+
+-- the app connects as this role — NOT a superuser (superusers ignore every policy)
+create role app_runtime nologin;
+grant select, insert, update, delete on agents to app_runtime;</code></pre>
+    <p>The same policy sits on every user-owned table — <code class="inl">mcp_servers</code>, <code class="inl">mcp_tools</code>, <code class="inl">connections</code>, <code class="inl">agents</code>, <code class="inl">agent_versions</code>, <code class="inl">graph_runs</code>. Each carries a denormalized <code class="inl">owner_id</code> + <code class="inl">tenant_id</code> so the test is a local column compare — no join. <code class="inl">users</code> is keyed on <code class="inl">tenant_id</code> (you see your own colleagues); <code class="inl">tenants</code> is the root and has neither.</p>
+
+    <h3 class="subh">What the app supplies — once per request, inside the transaction</h3>
+    <pre><code class="language-pgsql">-- values taken from the verified JWT, never from a query parameter
+set local app.tenant_id = '…';   -- SET LOCAL: this transaction only, cleared on commit
+set local app.user_id   = '…';   -- so a pooled connection never carries the last request's identity</code></pre>
+
+    <h3 class="subh">What PostgreSQL actually runs</h3>
+    <pre><code>-- your code
+select * from agents;
+
+-- what executes
+select * from agents
+where owner_id = :app_user_id and tenant_id = :app_tenant_id;</code></pre>
+    <p>Two teammates in the same company run identical SQL and get different rows. The application never writes that <code class="inl">WHERE</code> clause.</p>
+
+    <div class="rlsbox">
+      <p><b>Why <code>owner_id</code>, not just <code>tenant_id</code>.</b> Rule&nbsp;2 says "my agents, my connections, my runs — mine. Nobody else," and grading check&nbsp;1 is <b>user</b>-to-user. A tenant-only policy would let a colleague read your agents the moment the app-level filter is removed. <code>tenant_id</code> stays in the policy as a second barrier, and in the schema for the marketplace, install, admin review and billing.</p>
+    </div>
+
+    <h3 class="subh">What breaks it — and how we avoid it</h3>
+    <div class="qgrid">
+      <div>
+        <h3>App runs as a superuser</h3>
+        <p>Superusers and any role with <code class="inl">BYPASSRLS</code> ignore every policy. The request-serving role must be a plain <code class="inl">app_runtime</code>; migrations use a separate privileged role.</p>
+      </div>
+      <div>
+        <h3><code class="inl">FORCE</code> left off</h3>
+        <p>By default the role that <em>owns</em> a table is exempt from its own policies. <code class="inl">alter table … force row level security</code> closes that.</p>
+      </div>
+      <div>
+        <h3><code class="inl">SET</code> instead of <code class="inl">SET LOCAL</code></h3>
+        <p>With connection pooling a plain <code class="inl">SET</code> outlives the request; the next caller on that connection inherits the previous user's identity. <code class="inl">SET LOCAL</code> is transaction-scoped.</p>
+      </div>
+      <div>
+        <h3>Setting left unset</h3>
+        <p>Read it as <code class="inl">current_setting('app.user_id', true)</code> → returns <code class="inl">NULL</code> when missing → the policy matches nothing. Fail closed, never "match every row".</p>
+      </div>
+    </div>
+
+    <h3 class="subh">The one exception</h3>
+    <p><code class="inl">marketplace</code>, <code class="inl">review_submissions</code> and <code class="inl">resume_outbox</code> have RLS <em>not enabled</em>, and are granted only to a separate <code class="inl">app_reviewer</code> role. The cross-tenant read is deliberate and lives in the grant — not in a <code class="inl">WHERE</code> clause someone could forget.</p>
+
+    <h3 class="subh">How check&nbsp;1 runs against it</h3>
+    <p>The graders delete your application-level filter and query another user's agent by id. Under the policy that query returns <strong>zero rows</strong> — so the endpoint answers <code class="inl">404</code>, never <code class="inl">403</code> (a 403 would confirm the agent exists).</p>
+  </section>
+
+  <section id="queue" class="wrap">
+    <h2><span class="tick">/</span>Draining the queue under load</h2>
+    <p class="lede">The two patterns that make "bombarded admin" a non-event — both plain Postgres.</p>
+
+    <p><strong>Concurrent admins pull work without colliding.</strong> <code class="inl">FOR UPDATE SKIP LOCKED</code> is the canonical work-queue pattern: N admins call this at once, each gets a different row, nobody blocks.</p>
+    <pre><code class="language-pgsql">update review_submissions s
+set    status = 'in_review', claimed_by = $admin_id, claimed_at = now()
+from (
+  select id
+  from   review_submissions
+  where  status = 'pending'
+  order  by priority, submitted_at
+  for update skip locked
+  limit  1
+) nxt
+where s.id = nxt.id
+returning s.*;</code></pre>
+
+    <p><strong>Decide and schedule the resume in one transaction.</strong> This is the guarantee you would lose the moment the queue lived in a different datastore.</p>
+    <pre><code class="language-pgsql">begin;
+
+update review_submissions
+set    status = 'approved', decided_by = $admin_id, decided_at = now(),
+       decision_notes = $notes
+where  id = $id and status = 'in_review';
+
+insert into resume_outbox (graph_run_id, resume_value)
+select graph_run_id, '{"approved": true}'::jsonb
+from   review_submissions
+where  id = $id;
+
+commit;
+-- a worker: select ... from resume_outbox where processed_at is null
+--           for update skip locked;
+--           graph.invoke(Command(resume=v), {"configurable": {"thread_id": run.thread_id}})</code></pre>
+
+    <p>Everything that absorbs the load is already in the model: the partial index keeps the pending scan tiny, <code class="inl">SKIP LOCKED</code> lets admins parallelize, the partial unique index stops resubmits piling up, Rule&nbsp;6 keeps sub-threshold agents out of the queue entirely, and <code class="inl">priority</code> gives you a fast lane. If <em>dispatch</em> ever outgrows one Postgres — it won't, at this scale — move the work <em>signal</em> to <code class="inl">pgmq</code> or Redis Streams and keep the records and the audit trail here. The schema above doesn't change.</p>
+  </section>
+
+  <footer class="wrap">
+    <span>Data Sense · Agent Builder Capstone</span>
+    <span>Data model · working draft</span>
+    <span>One Postgres, RLS, sanitize on entry</span>
+  </footer>
+</main>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    try {
+      if (window.hljs) {
+        document.querySelectorAll('pre code').forEach(function (b) { window.hljs.highlightElement(b); });
+      }
+    } catch (e) { /* plain text is a fine fallback */ }
+  });
+</script>

@@ -1,0 +1,478 @@
+<title>Agent Builder Data Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/highlight.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/highlight.js/11.9.0/languages/json.min.js"></script>
+<style>
+  :root{
+    --bg:#f3f5f7; --surface:#ffffff; --surface-2:#e9edf1; --ink:#1a2129;
+    --muted:#586573; --border:#d3dae1; --line:#9aa7b2;
+    --accent:#0e7b85; --accent-soft:#dceff0;
+    --human:#a9631a; --human-soft:#f4ebdc;
+    --good:#2f7d4f; --danger:#a5342a;
+    --maxw:760px; --wide:1040px;
+    --f-display:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --f-body:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+    --f-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+      --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+      --accent:#48b8c1; --accent-soft:#123037;
+      --human:#d99a52; --human-soft:#2c2318;
+      --good:#63b585; --danger:#e0736a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+    --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+    --accent:#48b8c1; --accent-soft:#123037;
+    --human:#d99a52; --human-soft:#2c2318;
+    --good:#63b585; --danger:#e0736a;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:17px; line-height:1.65}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  .bleed{max-width:var(--wide); margin:0 auto; padding:0 24px}
+
+  header{border-bottom:1px solid var(--border); padding:56px 0 30px}
+  .eyebrow{font-family:var(--f-mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin:0 0 16px}
+  h1{font-family:var(--f-display); font-weight:600; font-size:2.3rem; line-height:1.1; letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--muted); margin:0; max-width:64ch}
+  nav.toc{margin:26px 0 0; padding:16px 0 0; border-top:1px solid var(--border); display:flex; flex-wrap:wrap; gap:6px 22px; font-family:var(--f-mono); font-size:12.5px}
+  nav.toc a{color:var(--muted); text-decoration:none}
+  nav.toc a:hover{color:var(--accent)}
+  nav.toc a::before{content:attr(data-n) " "; color:var(--accent); opacity:.7}
+
+  main{padding:28px 0 90px}
+  section{padding:42px 0 0}
+  h2{font-family:var(--f-display); font-weight:600; font-size:1.4rem; letter-spacing:-.01em; margin:0 0 6px}
+  h2 .tick{color:var(--accent); font-weight:500; margin-right:.5ch}
+  .lede{color:var(--muted); margin:0 0 20px}
+  p{margin:0 0 16px}
+  strong{font-weight:600; color:var(--ink)}
+  code.inl{font-family:var(--f-mono); font-size:.84em; background:var(--surface-2); padding:.12em .42em; border-radius:3px; color:var(--ink)}
+
+  figure{margin:0; padding:0}
+  .figframe{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 12px 12px; overflow-x:auto}
+  .figframe svg{display:block; margin:0 auto; min-width:860px; max-width:1000px; width:100%; height:auto; color:var(--line)}
+  figcaption{font-family:var(--f-body); font-size:14px; color:var(--muted); line-height:1.55; margin-top:14px; max-width:82ch}
+  figcaption b{color:var(--ink); font-weight:600}
+
+  .dfd .band{fill:var(--surface-2)}
+  .dfd .bandlabel{font-family:var(--f-mono); font-size:9.5px; letter-spacing:.14em; fill:var(--muted)}
+  .dfd .head{fill:var(--surface); stroke:var(--border); stroke-width:1.3}
+  .dfd .head-in{fill:none; stroke:var(--muted); stroke-width:1}
+  .dfd .htext{font-family:var(--f-display); font-size:10px; font-weight:500; fill:var(--ink)}
+  .dfd .hkind{font-family:var(--f-mono); font-size:7px; letter-spacing:.08em; fill:var(--muted)}
+  .dfd .life{stroke:var(--line); stroke-width:1; stroke-dasharray:2 4}
+  .dfd .msg{stroke:var(--line); stroke-width:1.4; fill:none}
+  .dfd .msg.ret{stroke-dasharray:5 4}
+  .dfd .msg.pause{stroke:var(--human); stroke-width:1.9}
+  .dfd .msg.cp{stroke:var(--accent); stroke-width:1.7}
+  .dfd .selfbox{fill:var(--surface-2); stroke:var(--border); stroke-width:1}
+  .dfd .mlab{font-family:var(--f-mono); font-size:8.5px; fill:var(--muted); paint-order:stroke; stroke:var(--surface-2); stroke-width:3px; stroke-linejoin:round}
+  .dfd .mlab .n{fill:var(--accent); font-weight:500}
+  .dfd .mlab.pause{fill:var(--human)}
+  .dfd .mlab.cp{fill:var(--accent)}
+  .dfd .note{font-family:var(--f-mono); font-size:8px; fill:var(--muted); paint-order:stroke; stroke:var(--surface-2); stroke-width:3px}
+  .dfd .note.hot{fill:var(--accent)}
+  .dfd marker#m path{fill:var(--line)}
+  .dfd marker#mp path{fill:var(--human)}
+  .dfd marker#mc path{fill:var(--accent)}
+
+  .legend{display:flex; flex-wrap:wrap; gap:8px 20px; margin:14px 2px 0; font-family:var(--f-mono); font-size:11px; color:var(--muted)}
+  .legend i{font-style:normal; display:inline-flex; align-items:center; gap:7px}
+  .legend .sw{width:22px; border-top:1.6px solid var(--line)}
+  .legend .sw.ret{border-top-style:dashed}
+  .legend .sw.pause{border-color:var(--human); border-top-width:2px}
+  .legend .sw.cp{border-color:var(--accent); border-top-width:2px}
+
+  pre{margin:16px 0 0; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:8px; padding:15px 17px; overflow-x:auto}
+  pre code{font-family:var(--f-mono); font-size:12px; line-height:1.6; color:var(--ink); white-space:pre}
+  .k{color:var(--accent)} .s{color:var(--human)} .c{color:var(--muted); font-style:italic}
+  .hljs{color:var(--ink); background:transparent}
+  .hljs-attr{color:var(--accent)} .hljs-string{color:var(--human)} .hljs-number,.hljs-literal{color:var(--good)} .hljs-comment{color:var(--muted); font-style:italic}
+
+  .tablewrap{overflow-x:auto; margin-top:14px; border:1px solid var(--border); border-radius:10px}
+  table{border-collapse:collapse; width:100%; min-width:520px; font-size:14px}
+  th{font-family:var(--f-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); text-align:left; background:var(--surface-2); padding:10px 15px; border-bottom:1px solid var(--border)}
+  td{padding:10px 15px; border-bottom:1px solid var(--border); vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td.c1{font-family:var(--f-mono); font-size:12.5px; color:var(--ink); white-space:nowrap}
+  td.c2{color:var(--muted); font-size:13.5px}
+  td.c2 b{color:var(--ink)}
+  td.pts{font-family:var(--f-mono); font-size:12px; color:var(--accent); white-space:nowrap}
+
+  ol.steps{margin:6px 0 0; padding:0; list-style:none; counter-reset:s}
+  ol.steps li{counter-increment:s; display:grid; grid-template-columns:30px 1fr; gap:14px; padding:12px 0; border-top:1px solid var(--border)}
+  ol.steps li:first-child{border-top:none}
+  ol.steps li::before{content:counter(s); font-family:var(--f-mono); font-size:12px; color:var(--accent); padding-top:2px}
+  ol.steps p{margin:0; font-size:14.5px; color:var(--muted)}
+  ol.steps b{color:var(--ink); font-weight:600}
+
+  .callout{margin-top:16px; border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:10px; padding:16px 18px; background:var(--surface)}
+  .callout h3{font-family:var(--f-mono); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); margin:0 0 8px}
+  .callout p{margin:0 0 10px; font-size:14px; color:var(--muted)}
+  .callout p:last-child{margin:0}
+  .callout b{color:var(--ink); font-weight:600}
+  .callout code{font-family:var(--f-mono); font-size:12px; color:var(--ink)}
+
+  .never{margin-top:16px; border:1px dashed var(--danger); border-radius:10px; padding:16px 18px; background:color-mix(in srgb,var(--danger) 7%,transparent)}
+  .never h3{font-family:var(--f-mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--danger); margin:0 0 8px}
+  .never p{margin:0; font-size:14px; color:var(--muted)}
+  .never code{font-family:var(--f-mono); font-size:12px; color:var(--ink)}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 0}
+  .chip{font-family:var(--f-mono); font-size:11px; padding:4px 9px; border-radius:20px; border:1px solid var(--border)}
+  .chip.a{color:var(--accent); border-color:var(--accent)}
+  .chip.h{color:var(--human); border-color:var(--human)}
+
+  footer{margin-top:44px; border-top:1px solid var(--border); padding:24px 0 0; font-family:var(--f-mono); font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:6px 18px}
+  :where(a):focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  @media (max-width:520px){ h1{font-size:1.8rem} }
+</style>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Data Sense · Agent Builder Capstone</p>
+    <h1>Agent Builder — Data Flow</h1>
+    <p class="dek">What the Build Orchestrator does end to end: a LangGraph conversation that plans an agent, pauses twice for the user, survives a restart while paused, then writes a scored configuration document. Companion to the connection data-flow.</p>
+    <nav class="toc">
+      <a href="#flow" data-n="01">The data flow</a>
+      <a href="#nodes" data-n="02">The graph, node by node</a>
+      <a href="#interrupt" data-n="03">How a pause works</a>
+      <a href="#config" data-n="04">generate_config</a>
+      <a href="#score" data-n="05">score_agent</a>
+      <a href="#publish" data-n="06">Publish → Review → Marketplace</a>
+      <a href="#schema" data-n="07">What gets written</a>
+      <a href="#never" data-n="08">Never in the config</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section id="flow">
+    <div class="wrap">
+      <h2><span class="tick">/</span>The data flow</h2>
+      <p class="lede">Six participants. Three phases: <strong>plan</strong> (pause 1), <strong>connect</strong> (pause 2), <strong>generate · score · deploy</strong>.</p>
+    </div>
+    <div class="bleed">
+      <figure>
+        <div class="figframe">
+          <svg class="dfd" viewBox="0 0 960 720" role="img" aria-label="Sequence data-flow for the Build Orchestrator across six participants: User, App Server, Build Orchestrator (a LangGraph graph), the LLM, the Scoring Engine, and PostgreSQL (tables plus the checkpointer). Phase 1 plan: (1) User posts a plain-English prompt to POST /builder/start; (2) App Server starts the graph on a thread and creates a graph_runs row; (3) the Orchestrator asks the LLM to parse the intent; (4) the LLM returns a capability spec; (5) the Orchestrator searches the user's registry — SELECT from mcp_tools where owner_id; (6) Postgres returns candidate servers and tools; (7) the Orchestrator checkpoints its state with interrupt select_servers; (8) it streams PAUSE 1 to the user — pick your tools. Phase 2 connect: (9) the user resumes with their picks; (10) the App Server resumes the graph, loading state from the checkpointer; (11) the Orchestrator checks connections — SELECT 1 from connections where owner_id and server_id; (12) Postgres returns GitHub present, Slack missing; (13) the Orchestrator checkpoints with interrupt add_connection; (14) it streams PAUSE 2 — add a Slack token; the user adds the connection, then resumes and the check passes. Phase 3 generate score deploy: (15) the Orchestrator asks the LLM to write the system prompt and pick a graph type; (16) the LLM returns prose; (17) the Orchestrator assembles the config document — tool list, sensitivity, require_approval and interrupt_before are mechanical, copied from mcp_tools; (18) it calls the Scoring Engine with the config; (19) the Scoring Engine returns effectiveness, safety and a breakdown — a pure function, no LLM; (20) the Orchestrator inserts an agent_versions row with the config, scores and status deployed; (21) it marks the graph_runs row complete; (22) it streams the finished agent card to the user. The checkpoints at steps 7 and 13 write state to Postgres, so killing and restarting the server resumes the build correctly.">
+            <defs>
+              <marker id="m" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+              <marker id="mp" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+              <marker id="mc" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+            </defs>
+
+            <!-- phase bands -->
+            <rect class="band" x="8" y="84" width="944" height="200" rx="9"/>
+            <text class="bandlabel" x="20" y="100">PHASE 1 · PLAN — ends at PAUSE 1</text>
+            <rect class="band" x="8" y="292" width="944" height="176" rx="9"/>
+            <text class="bandlabel" x="20" y="308">PHASE 2 · CONNECT — ends at PAUSE 2</text>
+            <rect class="band" x="8" y="476" width="944" height="230" rx="9"/>
+            <text class="bandlabel" x="20" y="492">PHASE 3 · GENERATE · SCORE · DEPLOY</text>
+
+            <!-- participant heads -->
+            <g>
+              <rect class="head" x="10" y="34" width="90" height="42" rx="8"/><text class="htext" x="55" y="52" text-anchor="middle">User</text><text class="hkind" x="55" y="66" text-anchor="middle">browser</text>
+              <rect class="head" x="128" y="34" width="110" height="42" rx="8"/><text class="htext" x="183" y="52" text-anchor="middle">App Server</text><text class="hkind" x="183" y="66" text-anchor="middle">routing · SSE</text>
+              <rect class="head" x="278" y="34" width="132" height="42" rx="8"/><text class="htext" x="344" y="49" text-anchor="middle">Build Orchestrator</text><text class="hkind" x="344" y="64" text-anchor="middle">LangGraph graph</text>
+              <rect class="head" x="454" y="34" width="90" height="42" rx="4"/><rect class="head-in" x="458" y="38" width="82" height="34" rx="2"/><text class="htext" x="499" y="56" text-anchor="middle">LLM</text>
+              <rect class="head" x="588" y="34" width="118" height="42" rx="8"/><text class="htext" x="647" y="52" text-anchor="middle">Scoring Engine</text><text class="hkind" x="647" y="66" text-anchor="middle">pure function</text>
+              <rect class="head" x="782" y="34" width="150" height="42" rx="3"/><text class="htext" x="857" y="49" text-anchor="middle">PostgreSQL</text><text class="hkind" x="857" y="64" text-anchor="middle">tables + checkpointer</text>
+            </g>
+
+            <!-- lifelines -->
+            <path class="life" d="M55 76 V706"/>
+            <path class="life" d="M183 76 V706"/>
+            <path class="life" d="M344 76 V706"/>
+            <path class="life" d="M499 76 V706"/>
+            <path class="life" d="M647 76 V706"/>
+            <path class="life" d="M857 76 V706"/>
+
+            <!-- ===== PHASE 1 ===== -->
+            <path class="msg" d="M55 110 H183" marker-end="url(#m)"/><text class="mlab" x="119" y="106" text-anchor="middle"><tspan class="n">1</tspan>  POST /builder/start { prompt }</text>
+            <path class="msg" d="M183 134 H344" marker-end="url(#m)"/><text class="mlab" x="263" y="130" text-anchor="middle"><tspan class="n">2</tspan>  start(thread) · new graph_runs (kind=build)</text>
+            <path class="msg" d="M344 158 H499" marker-end="url(#m)"/><text class="mlab" x="421" y="154" text-anchor="middle"><tspan class="n">3</tspan>  parse_intent(prompt)</text>
+            <path class="msg ret" d="M499 180 H344" marker-end="url(#m)"/><text class="mlab" x="421" y="176" text-anchor="middle"><tspan class="n">4</tspan>  capability spec</text>
+            <path class="msg" d="M344 204 H857" marker-end="url(#m)"/><text class="mlab" x="600" y="200" text-anchor="middle"><tspan class="n">5</tspan>  search_registry — LLM picks minimal tool set</text>
+            <path class="msg ret" d="M857 226 H344" marker-end="url(#m)"/><text class="mlab" x="600" y="222" text-anchor="middle"><tspan class="n">6</tspan>  candidate servers + tools (LLM-picked)</text>
+            <path class="msg cp" d="M344 250 H857" marker-end="url(#mc)"/><text class="mlab cp" x="600" y="246" text-anchor="middle"><tspan class="n">7</tspan>  ⏸ checkpoint state — interrupt: select_servers</text>
+            <path class="msg pause ret" d="M344 274 H55" marker-end="url(#mp)"/><text class="mlab pause" x="199" y="270" text-anchor="middle"><tspan class="n">8</tspan>  SSE → PAUSE 1: pick your tools (interrupt_payload)</text>
+
+            <!-- ===== PHASE 2 ===== -->
+            <path class="msg" d="M55 318 H183" marker-end="url(#m)"/><text class="mlab" x="119" y="314" text-anchor="middle"><tspan class="n">9</tspan>  POST /builder/{thread}/resume { picks }</text>
+            <path class="msg" d="M183 342 H344" marker-end="url(#m)"/><text class="mlab" x="263" y="338" text-anchor="middle"><tspan class="n">10</tspan>  resume(thread) · load state from checkpointer</text>
+            <path class="msg" d="M344 366 H857" marker-end="url(#m)"/><text class="mlab" x="600" y="362" text-anchor="middle"><tspan class="n">11</tspan>  check_connections — SELECT 1 WHERE owner_id, server_id</text>
+            <path class="msg ret" d="M857 388 H344" marker-end="url(#m)"/><text class="mlab" x="600" y="384" text-anchor="middle"><tspan class="n">12</tspan>  github ✓ · slack ✗</text>
+            <path class="msg cp" d="M344 412 H857" marker-end="url(#mc)"/><text class="mlab cp" x="600" y="408" text-anchor="middle"><tspan class="n">13</tspan>  ⏸ checkpoint state — interrupt: add_connection</text>
+            <path class="msg pause ret" d="M344 436 H55" marker-end="url(#mp)"/><text class="mlab pause" x="199" y="432" text-anchor="middle"><tspan class="n">14</tspan>  SSE → PAUSE 2: add a Slack token</text>
+            <text class="note" x="430" y="456" text-anchor="middle">user adds the connection (see connection-data-flow) → resume → check_connections passes</text>
+
+            <!-- ===== PHASE 3 ===== -->
+            <path class="msg" d="M344 500 H499" marker-end="url(#m)"/><text class="mlab" x="421" y="496" text-anchor="middle"><tspan class="n">15</tspan>  write system_prompt · pick graph type</text>
+            <path class="msg ret" d="M499 522 H344" marker-end="url(#m)"/><text class="mlab" x="421" y="518" text-anchor="middle"><tspan class="n">16</tspan>  prose</text>
+
+            <rect class="selfbox" x="300" y="536" width="88" height="18" rx="3"/>
+            <text class="mlab" x="344" y="548" text-anchor="middle">17 assemble config</text>
+            <text class="note" x="344" y="568" text-anchor="middle">tools · sensitivity · require_approval · interrupt_before — mechanical, copied from mcp_tools</text>
+
+            <path class="msg" d="M344 588 H647" marker-end="url(#m)"/><text class="mlab" x="495" y="584" text-anchor="middle"><tspan class="n">18</tspan>  score(config)</text>
+            <path class="msg ret" d="M647 610 H344" marker-end="url(#m)"/><text class="mlab" x="495" y="606" text-anchor="middle"><tspan class="n">19</tspan>  effectiveness · safety · breakdown  (no LLM)</text>
+            <path class="msg" d="M344 634 H857" marker-end="url(#m)"/><text class="mlab" x="600" y="630" text-anchor="middle"><tspan class="n">20</tspan>  INSERT agent_versions { config, scores, status=deployed }</text>
+            <path class="msg cp" d="M344 656 H857" marker-end="url(#mc)"/><text class="mlab cp" x="600" y="652" text-anchor="middle"><tspan class="n">21</tspan>  mark graph_runs complete</text>
+            <path class="msg pause ret" d="M344 680 H55" marker-end="url(#mp)"/><text class="mlab pause" x="199" y="676" text-anchor="middle"><tspan class="n">22</tspan>  SSE → done: agent card (name · capabilities · scores · endpoint)</text>
+
+            <!-- restart note -->
+            <text class="note hot" x="874" y="250" text-anchor="end">state in Postgres, not memory →</text>
+            <text class="note hot" x="874" y="412" text-anchor="end">kill + restart resumes (check 5)</text>
+          </svg>
+        </div>
+        <figcaption>
+          <b>Two pauses, one mechanism.</b> Steps 7 and 13 write the graph's full state to the checkpointer before returning to the user — so a restart, a redeploy, or a long wait doesn't lose the build.
+          <b>The LLM plans; code assembles.</b> The model parses intent (3) and writes prose (15). The tool list, each tool's <code class="inl">sensitivity</code>, <code class="inl">require_approval</code> and <code class="inl">interrupt_before</code> (17) are copied from <code class="inl">mcp_tools</code> by code — a model never decides the gate.
+          <b>The score is a function.</b> Step 19 is pure arithmetic over the config (no model), so every point is traceable.
+        </figcaption>
+      </figure>
+      <div class="legend">
+        <i><span class="sw"></span> call / query</i>
+        <i><span class="sw ret"></span> response</i>
+        <i><span class="sw cp"></span> checkpoint (durable state)</i>
+        <i><span class="sw pause"></span> stream to a human · pause</i>
+      </div>
+    </div>
+  </section>
+
+  <section id="nodes" class="wrap">
+    <h2><span class="tick">/</span>The graph, node by node</h2>
+    <p class="lede">One LangGraph graph. <code class="inl">present_tools</code> always pauses; <code class="inl">request_credentials</code> pauses only when something is missing.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Node</th><th>What it does</th></tr></thead>
+        <tbody>
+          <tr><td class="c1">parse_intent</td><td class="c2">LLM turns the sentence into a capability spec — <em>needs to read issues, needs to post a message</em></td></tr>
+          <tr><td class="c1">search_registry</td><td class="c2">a second, distinct LLM call — a tool-selection sub-agent shown the user's full <code>mcp_servers</code> / <code>mcp_tools</code> catalog (names, descriptions, sensitivity) and asked to pick the minimal set the request actually needs. <b>Update — 2026-09-12:</b> originally an ILIKE keyword match; that pulled in a server's <em>entire</em> unrelated tool set (e.g. <code>delete_file</code>, <code>create_repository</code>) whenever one loose keyword like "commit" matched any of its tool descriptions. Every pick is still re-validated against the real catalog rows before anything downstream sees it — sensitivity always comes from that row, never from the model (Rule 4).</td></tr>
+          <tr><td class="c1">⏸ present_tools</td><td class="c2"><b>PAUSE 1</b> — shows candidates, user ticks the ones to include</td></tr>
+          <tr><td class="c1">check_connections</td><td class="c2">for each picked server: <code>SELECT 1 FROM connections WHERE owner_id, server_id</code></td></tr>
+          <tr><td class="c1">⏸ request_credentials</td><td class="c2"><b>PAUSE 2</b> — <em>only if</em> a connection is missing; ask for the token, then re-run <code>check_connections</code></td></tr>
+          <tr><td class="c1">generate_config</td><td class="c2">assemble the <code>agent_versions.config</code> document — see below</td></tr>
+          <tr><td class="c1">score_agent</td><td class="c2">call the Scoring Engine → effectiveness + safety + breakdown</td></tr>
+          <tr><td class="c1">deploy</td><td class="c2">mark the version <code>deployed</code>, register its endpoint</td></tr>
+          <tr><td class="c1">done</td><td class="c2">return the finished agent card</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="interrupt" class="wrap">
+    <h2><span class="tick">/</span>How a pause works</h2>
+    <p class="lede">The reason the build can stop for days and resume exactly where it was (grading check 5).</p>
+    <ol class="steps">
+      <li><p>At <code class="inl">present_tools</code> / <code class="inl">request_credentials</code> the graph calls LangGraph's <code class="inl">interrupt()</code>.</p></li>
+      <li><p>The graph's <b>full state is written to the checkpointer</b> (Postgres), keyed by <code class="inl">thread_id</code>.</p></li>
+      <li><p>The <code class="inl">graph_runs</code> row is updated → <code class="inl">status='interrupted'</code>, <code class="inl">interrupt_kind='select_servers' | 'add_connection'</code>, <code class="inl">interrupt_payload</code> = what the UI should render.</p></li>
+      <li><p>The HTTP request <b>returns</b>. Nothing stays in server memory.</p></li>
+      <li><p>Later: <code class="inl">POST /builder/{thread_id}/resume { … }</code> → the graph <b>loads its state from the checkpointer</b> and continues from the exact node it stopped at.</p></li>
+    </ol>
+    <div class="callout">
+      <h3>Why it survives a restart</h3>
+      <p>The paused state lives in Postgres, not in the process. Kill the server during PAUSE 1, redeploy, then submit the tool picks — <code>resume</code> reloads the state and the build continues.</p>
+      <p style="margin-top:10px"><b>Update — 2026-09-12:</b> Admin Review turned out <em>not</em> to use this same mechanism — see <a href="#publish">Publish → Review → Marketplace</a> below for why.</p>
+    </div>
+  </section>
+
+  <section id="config" class="wrap">
+    <h2><span class="tick">/</span><code class="inl">generate_config</code> — where "agent = data" becomes real</h2>
+    <p class="lede">Rule 1. The output is one JSON document → a new <code class="inl">agent_versions</code> row. It is never generated code.</p>
+
+    <div class="chips">
+      <span class="chip h">LLM writes: name · description · system_prompt · graph type</span>
+      <span class="chip a">code fills: tools · sensitivity · require_approval · interrupt_before</span>
+    </div>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Field</th><th>Filled by</th></tr></thead>
+        <tbody>
+          <tr><td class="c1">schema_version</td><td class="c2">fixed — tells the runtime how to read the rest</td></tr>
+          <tr><td class="c1">name · description</td><td class="c2">LLM · human-facing</td></tr>
+          <tr><td class="c1">model</td><td class="c2">policy — e.g. <code>claude-sonnet-5</code></td></tr>
+          <tr><td class="c1">system_prompt</td><td class="c2"><b>LLM</b> · the instructions, written from the intent</td></tr>
+          <tr><td class="c1">graph</td><td class="c2">LLM picks the <em>type</em> (<code>sequential</code> | <code>coordinator_specialist</code>); nodes/edges follow</td></tr>
+          <tr><td class="c1">tools[]</td><td class="c2"><b>mechanical, from <code>mcp_tools</code></b> · each: <code>{ mcp_server_id, tool_name, sensitivity, require_approval }</code></td></tr>
+          <tr><td class="c1">interrupt_before</td><td class="c2"><b>mechanical</b> · every tool with <code>sensitivity in (write, destructive)</code> — <em>not</em> from the prompt</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <pre><code class="language-json">{
+  "schema_version": "1.0",
+  "name": "GitHub Issues → Slack Summary",
+  "model": "claude-sonnet-5",
+  "system_prompt": "List open GitHub issues assigned to the user, summarize them, post to #standup.",
+  "graph": { "type": "sequential" },
+  "tools": [
+    { "mcp_server_id": "uuid-github", "tool_name": "list_issues",  "sensitivity": "read",  "require_approval": false },
+    { "mcp_server_id": "uuid-slack",  "tool_name": "post_message", "sensitivity": "write", "require_approval": true }
+  ],
+  "interrupt_before": ["post_message"]
+}</code></pre>
+
+    <ol class="steps">
+      <li><p><b>Portable.</b> Tools reference <code class="inl">mcp_server_id</code> + capability, never a credential. The same document installs into another tenant who brings their own connection; the runtime resolves <code class="inl">mcp_server_id</code> → <em>the caller's</em> connection at run time.</p></li>
+      <li><p><b>Versioned.</b> Every build or later edit is a new <code class="inl">agent_versions</code> row — never mutated in place.</p></li>
+      <li><p><b>Safe by construction.</b> The gate (<code class="inl">interrupt_before</code>) is derived from the DB's <code class="inl">sensitivity</code> marking, so a model can't talk its way past it and neither can a hand-edited prompt.</p></li>
+    </ol>
+  </section>
+
+  <section id="score" class="wrap">
+    <h2><span class="tick">/</span><code class="inl">score_agent</code> — two numbers you can defend</h2>
+    <p class="lede">Rule 6: <em>"point at exactly why a number is what it is — no asking a model to guess."</em> It is a pure function over the config document.</p>
+
+    <p><strong>Effectiveness / 100</strong> — an example rubric</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Dimension</th><th>Points</th></tr></thead>
+        <tbody>
+          <tr><td class="c2">Tool coverage</td><td class="pts">min(unique_servers × 10, 30)</td></tr>
+          <tr><td class="c2">Prompt quality</td><td class="pts">word-count band + task keyword + output target → up to 25</td></tr>
+          <tr><td class="c2">Model tier</td><td class="pts">sonnet/opus 20 · haiku 10 · other 5</td></tr>
+          <tr><td class="c2">Graph complexity</td><td class="pts">coordinator_specialist 15 · sequential ≥3 10 · basic 5</td></tr>
+          <tr><td class="c2">Schedule trigger present</td><td class="pts">10</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top:20px"><strong>Safety / 100</strong></p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Dimension</th><th>Points</th></tr></thead>
+        <tbody>
+          <tr><td class="c2">Write tools gated</td><td class="pts">write_with_approval / total_write × 40</td></tr>
+          <tr><td class="c2">Destructive tools gated</td><td class="pts">dest_with_approval / total_dest × 30 (10 if none)</td></tr>
+          <tr><td class="c2">No credentials in config</td><td class="pts">regex scan for token patterns → 20 if clean</td></tr>
+          <tr><td class="c2">Read-only ratio</td><td class="pts">read_tools / total_tools × 10</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top:20px">It's <strong>counting list items, a lookup table, and one regex</strong> — nothing else.</p>
+
+    <h3 style="font-family:var(--f-display);font-size:1.05rem;font-weight:600;margin:24px 0 0">Worked example — the GitHub → Slack agent</h3>
+    <pre><code class="language-json">tools: [ { "list_issues",  "sensitivity": "read",  "require_approval": false },
+         { "post_message", "sensitivity": "write", "require_approval": true } ]
+interrupt_before: [ "post_message" ]
+system_prompt: "List open GitHub issues, summarize, post to #standup."   // 13 words
+model: "claude-sonnet-5"   graph: sequential (2 nodes)   schedule: none</code></pre>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Effectiveness</th><th>why</th><th>pts</th></tr></thead>
+        <tbody>
+          <tr><td class="c2">coverage</td><td class="c2">2 servers × 10</td><td class="pts">20</td></tr>
+          <tr><td class="c2">prompt</td><td class="c2">13 words → 0 · has "list/post" +5 · has "issue" +5</td><td class="pts">10</td></tr>
+          <tr><td class="c2">model</td><td class="c2">sonnet-5</td><td class="pts">20</td></tr>
+          <tr><td class="c2">graph</td><td class="c2">sequential, only 2 nodes</td><td class="pts">5</td></tr>
+          <tr><td class="c2">schedule</td><td class="c2">none</td><td class="pts">0</td></tr>
+          <tr><td class="c2"><b>total</b></td><td class="c2"></td><td class="pts"><b>55</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Safety</th><th>why</th><th>pts</th></tr></thead>
+        <tbody>
+          <tr><td class="c2">write gated</td><td class="c2">1 write, and it's in interrupt_before → 1/1 × 40</td><td class="pts">40</td></tr>
+          <tr><td class="c2">destructive gated</td><td class="c2">none present</td><td class="pts">10</td></tr>
+          <tr><td class="c2">no creds</td><td class="c2">regex finds no token</td><td class="pts">20</td></tr>
+          <tr><td class="c2">read ratio</td><td class="c2">1 read / 2 tools × 10</td><td class="pts">5</td></tr>
+          <tr><td class="c2"><b>total</b></td><td class="c2"></td><td class="pts"><b>75</b></td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="callout">
+      <h3>The result</h3>
+      <p>Effectiveness <b>55</b> is below 60 → <b>Publish disabled</b>, reason shown: <em>"add a schedule or a fuller prompt."</em></p>
+      <p>Remove <code>post_message</code> from <code>interrupt_before</code> → write-gated becomes <b>0</b> → safety 35 → still can't publish. That's grading check 3.</p>
+    </div>
+    <p style="margin-top:16px">Every sub-score is stored, so "why 75?" answers itself: <code class="inl">40 + 10 + 20 + 5</code>. No LLM, ever — same config, same score.</p>
+  </section>
+
+  <section id="publish" class="wrap">
+    <h2><span class="tick">/</span>Publish → Review → Marketplace</h2>
+    <p class="lede">Rule 5 (publishing strips the company) and Rule 6's other half — the score gate is <code class="inl">score_agent</code>'s (<a href="#score">above</a>) <em>use</em>, this is what happens after it passes. Built and verified 2026-09-12: a real 55/100 agent blocked, a real 69/100 agent published, and a rejection sent an agent back to draft.</p>
+
+    <div class="chips">
+      <span class="chip a">code decides: score, gate, sanitize</span>
+      <span class="chip h">human decides: approve / request changes / reject</span>
+    </div>
+
+    <ol class="steps" style="margin-top:20px">
+      <li><p>Owner asks to publish an existing <code class="inl">agent_versions</code> row (already <code class="inl">status='draft'</code> — the build finished long before this, possibly days earlier).</p></li>
+      <li><p><code class="inl">score_agent</code>'s logic runs (<a href="#score">above</a>). If effectiveness &lt; 60 or safety &lt; 70, publish is rejected right here with the reason; nothing is written.</p></li>
+      <li><p>If it clears the gate: <code class="inl">agent_versions</code> — UPDATE <code class="inl">effectiveness_score</code>, <code class="inl">safety_score</code>, <code class="inl">score_breakdown</code>, <code class="inl">status='in_review'</code>.</p></li>
+      <li><p>The <b>Sanitizer</b> strips the config to a manifest: <code class="inl">name</code>, <code class="inl">description</code>, <code class="inl">model</code>, <code class="inl">graph.type</code>, and each tool's <code class="inl">{name, sensitivity}</code> — never <code class="inl">mcp_server_id</code>, never <code class="inl">system_prompt</code> (where planted confidential material would live, Rule 5's actual test).</p></li>
+      <li><p><code class="inl">review_submissions</code> — INSERT <code class="inl">{sanitized_manifest, effectiveness_score, safety_score, score_breakdown, status: 'pending', priority}</code>. Any <code class="inl">destructive</code> capability bumps priority to the front of the queue.</p></li>
+      <li><p>An admin lists the pending queue and decides: <code class="inl">approved</code> · <code class="inl">changes_requested</code> · <code class="inl">rejected</code>.</p></li>
+      <li><p><b>Approved</b> → <code class="inl">marketplace</code> — INSERT the same sanitized manifest + scores, denormalized (a listing read never touches a tenant-scoped table) · <code class="inl">agent_versions.status='published'</code>.</p></li>
+      <li><p><b>Changes requested / rejected</b> → <code class="inl">agent_versions.status='draft'</code> — back to the owner, with <code class="inl">decision_notes</code> explaining why. Nothing reaches <code class="inl">marketplace</code>.</p></li>
+    </ol>
+
+    <div class="callout">
+      <h3>Why this isn't a build-graph pause</h3>
+      <p>"<a href="#interrupt">How a pause works</a>" above established pauses as "full state to the checkpointer, <code>graph_runs.status='interrupted'</code>, resume reloads and continues." Admin Review looks like it should be the same mechanism — <code>await_approval</code> is even a valid <code>interrupt_kind</code> in the schema — but it isn't, here.</p>
+      <p>By the time an owner asks to publish, the build graph's thread already reached <code>END</code>; the config is fully persisted. There's no live thread to pause or resume — publish just reads that finished row, and admin approval writes directly, with no outbox and no worker re-invoking a graph. This only holds because <code class="inl">generate_config</code> and <code class="inl">score_agent</code> are plain functions here, not graph nodes gated by this pause — see DESIGN-NOTES §2.14 for the full reasoning and what would change it.</p>
+    </div>
+
+    <p style="margin-top:16px"><b>Not built:</b> Install. "Independent copy, installer supplies own creds" needs a second identity to mean anything — there is exactly one hardcoded owner in this whole prototype today.</p>
+  </section>
+
+  <section id="schema" class="wrap">
+    <h2><span class="tick">/</span>What gets written</h2>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>When</th><th>Table · change</th></tr></thead>
+        <tbody>
+          <tr><td class="c1">step 2</td><td class="c2"><code>graph_runs</code> — INSERT <code>{ kind: 'build', thread_id, status: 'running', owner_id, tenant_id }</code></td></tr>
+          <tr><td class="c1">steps 7, 13</td><td class="c2"><code>graph_runs</code> — UPDATE <code>status='interrupted'</code>, <code>interrupt_kind</code>, <code>interrupt_payload</code> &nbsp;·&nbsp; checkpointer tables — full graph state</td></tr>
+          <tr><td class="c1">steps 10, 15</td><td class="c2"><code>graph_runs</code> — UPDATE <code>status='running'</code> on each resume</td></tr>
+          <tr><td class="c1">step 20</td><td class="c2"><code>agent_versions</code> — INSERT <code>{ config, version, status: 'draft', owner_id, tenant_id }</code>. <b>Update — 2026-09-12:</b> not <code>'deployed'</code> as originally assumed here — the build graph never sets that status, and the Runtime (<code>run/runtime.ts</code>) doesn't check <code>status</code> at all yet, so a <code>'draft'</code> version runs exactly like any other. "Deployed" as a distinct, gated state isn't built.</td></tr>
+          <tr><td class="c1">step 21</td><td class="c2"><code>graph_runs</code> — UPDATE <code>status='completed'</code></td></tr>
+          <tr><td class="c1">publish</td><td class="c2"><code>agent_versions</code> — UPDATE <code>effectiveness_score</code>, <code>safety_score</code>, <code>score_breakdown</code>, <code>status='in_review'</code> &nbsp;·&nbsp; <code>graph_runs</code> — INSERT <code>{ kind: 'review', status: 'completed' }</code> (an FK anchor only, not a real thread — see <a href="#publish">Publish → Review → Marketplace</a>) &nbsp;·&nbsp; <code>review_submissions</code> — INSERT sanitized manifest + scores, <code>status='pending'</code></td></tr>
+          <tr><td class="c1">admin decides</td><td class="c2"><code>review_submissions</code> — UPDATE <code>status</code>, <code>decision_notes</code>, <code>decided_at</code> &nbsp;·&nbsp; if approved: <code>marketplace</code> — INSERT, <code>agent_versions.status='published'</code> &nbsp;·&nbsp; else: <code>agent_versions.status='draft'</code></td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:16px"><b>Reads only:</b> <code class="inl">mcp_servers</code>, <code class="inl">mcp_tools</code>, <code class="inl">connections</code> (existence check — never the ciphertext).</p>
+  </section>
+
+  <section id="never" class="wrap">
+    <h2><span class="tick">/</span>Never in the config</h2>
+    <div class="never">
+      <h3>Rule 3 · Rule 5 — checked against the stored config</h3>
+      <p>The Build Orchestrator never reads a credential and never writes one. <code>agent_versions.config</code> references servers by <code>mcp_server_id</code> only. No token, no <code>tenant_id</code> in the document body, no company text — the same row is what the Sanitizer reads on publish (<a href="#publish">above</a>), so anything tenant-specific in it would be a leak. Verified 2026-09-12: a real published manifest carries only <code>name</code>/<code>description</code>/<code>model</code>/<code>graphType</code>/<code>capabilities</code> — no <code>mcp_server_id</code>, no <code>system_prompt</code>.</p>
+    </div>
+  </section>
+
+  <footer class="wrap">
+    <span>Data Sense · Agent Builder Capstone</span>
+    <span>Agent builder data flow</span>
+    <span>Companion to the architecture, data-model, connection &amp; flow docs</span>
+  </footer>
+</main>
+
+<script>
+  document.addEventListener('DOMContentLoaded', function () {
+    try { if (window.hljs) document.querySelectorAll('pre code').forEach(function (b) { window.hljs.highlightElement(b); }); }
+    catch (e) {}
+  });
+</script>

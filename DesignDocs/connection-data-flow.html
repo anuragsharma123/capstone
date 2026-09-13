@@ -1,0 +1,392 @@
+<title>MCP Connection Data Flow</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500&display=swap">
+<style>
+  :root{
+    --bg:#f3f5f7; --surface:#ffffff; --surface-2:#e9edf1; --ink:#1a2129;
+    --muted:#586573; --border:#d3dae1; --line:#9aa7b2;
+    --accent:#0e7b85; --accent-soft:#dceff0;
+    --human:#a9631a; --human-soft:#f4ebdc;
+    --good:#2f7d4f; --danger:#a5342a;
+    --maxw:760px; --wide:1040px;
+    --f-display:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --f-body:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+    --f-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+      --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+      --accent:#48b8c1; --accent-soft:#123037;
+      --human:#d99a52; --human-soft:#2c2318;
+      --good:#63b585; --danger:#e0736a;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+    --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+    --accent:#48b8c1; --accent-soft:#123037;
+    --human:#d99a52; --human-soft:#2c2318;
+    --good:#63b585; --danger:#e0736a;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+  body{margin:0; background:var(--bg); color:var(--ink); font-family:var(--f-body); font-size:17px; line-height:1.65}
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  .bleed{max-width:var(--wide); margin:0 auto; padding:0 24px}
+
+  header{border-bottom:1px solid var(--border); padding:56px 0 30px}
+  .eyebrow{font-family:var(--f-mono); font-size:12px; letter-spacing:.16em; text-transform:uppercase; color:var(--accent); margin:0 0 16px}
+  h1{font-family:var(--f-display); font-weight:600; font-size:2.3rem; line-height:1.1; letter-spacing:-.018em; margin:0 0 14px; text-wrap:balance}
+  .dek{font-size:1.06rem; color:var(--muted); margin:0; max-width:64ch}
+  nav.toc{margin:26px 0 0; padding:16px 0 0; border-top:1px solid var(--border); display:flex; flex-wrap:wrap; gap:6px 22px; font-family:var(--f-mono); font-size:12.5px}
+  nav.toc a{color:var(--muted); text-decoration:none}
+  nav.toc a:hover{color:var(--accent)}
+  nav.toc a::before{content:attr(data-n) " "; color:var(--accent); opacity:.7}
+
+  main{padding:28px 0 90px}
+  section{padding:42px 0 0}
+  h2{font-family:var(--f-display); font-weight:600; font-size:1.4rem; letter-spacing:-.01em; margin:0 0 6px}
+  h2 .tick{color:var(--accent); font-weight:500; margin-right:.5ch}
+  .lede{color:var(--muted); margin:0 0 20px}
+  p{margin:0 0 16px}
+  strong{font-weight:600; color:var(--ink)}
+  code.inl{font-family:var(--f-mono); font-size:.84em; background:var(--surface-2); padding:.12em .42em; border-radius:3px; color:var(--ink)}
+
+  figure{margin:0; padding:0}
+  .figframe{background:var(--surface); border:1px solid var(--border); border-radius:12px; padding:20px 12px 12px; overflow-x:auto}
+  .figframe svg{display:block; margin:0 auto; min-width:840px; max-width:1000px; width:100%; height:auto; color:var(--line)}
+  figcaption{font-family:var(--f-body); font-size:14px; color:var(--muted); line-height:1.55; margin-top:14px; max-width:82ch}
+  figcaption b{color:var(--ink); font-weight:600}
+
+  .dfd .band{fill:var(--surface-2)}
+  .dfd .bandlabel{font-family:var(--f-mono); font-size:9.5px; letter-spacing:.14em; fill:var(--muted)}
+  .dfd .head{fill:var(--surface); stroke:var(--border); stroke-width:1.3}
+  .dfd .head-in{fill:none; stroke:var(--muted); stroke-width:1}
+  .dfd .htext{font-family:var(--f-display); font-size:10px; font-weight:500; fill:var(--ink)}
+  .dfd .hkind{font-family:var(--f-mono); font-size:7px; letter-spacing:.08em; fill:var(--muted)}
+  .dfd .life{stroke:var(--line); stroke-width:1; stroke-dasharray:2 4}
+  .dfd .msg{stroke:var(--line); stroke-width:1.4; fill:none}
+  .dfd .msg.ret{stroke-dasharray:5 4}
+  .dfd .msg.sec{stroke:var(--human); stroke-width:1.9}
+  .dfd .mlab{font-family:var(--f-mono); font-size:8.5px; fill:var(--muted); paint-order:stroke; stroke:var(--surface-2); stroke-width:3px; stroke-linejoin:round}
+  .dfd .mlab .n{fill:var(--accent); font-weight:500}
+  .dfd .mlab.sec{fill:var(--human)}
+  .dfd .note{font-family:var(--f-mono); font-size:8px; fill:var(--muted); paint-order:stroke; stroke:var(--surface-2); stroke-width:3px}
+  .dfd marker#m path{fill:var(--line)}
+  .dfd marker#ms path{fill:var(--human)}
+
+  .legend{display:flex; flex-wrap:wrap; gap:8px 20px; margin:14px 2px 0; font-family:var(--f-mono); font-size:11px; color:var(--muted)}
+  .legend i{font-style:normal; display:inline-flex; align-items:center; gap:7px}
+  .legend .sw{width:22px; border-top:1.6px solid var(--line)}
+  .legend .sw.ret{border-top-style:dashed}
+  .legend .sw.sec{border-color:var(--human); border-top-width:2px}
+
+  pre{margin:16px 0 0; background:var(--surface); border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:8px; padding:15px 17px; overflow-x:auto}
+  pre code{font-family:var(--f-mono); font-size:12px; line-height:1.6; color:var(--ink); white-space:pre}
+  .k{color:var(--accent)} .s{color:var(--human)} .c{color:var(--muted); font-style:italic}
+
+  .tablewrap{overflow-x:auto; margin-top:14px; border:1px solid var(--border); border-radius:10px}
+  table{border-collapse:collapse; width:100%; min-width:520px; font-size:14px}
+  th{font-family:var(--f-mono); font-size:10px; letter-spacing:.1em; text-transform:uppercase; color:var(--muted); text-align:left; background:var(--surface-2); padding:10px 15px; border-bottom:1px solid var(--border)}
+  td{padding:10px 15px; border-bottom:1px solid var(--border); vertical-align:top}
+  tr:last-child td{border-bottom:none}
+  td.c1{font-family:var(--f-mono); font-size:12.5px; color:var(--ink); white-space:nowrap}
+  td.c2{font-family:var(--f-mono); font-size:11.5px; color:var(--accent); white-space:nowrap}
+  td.c3{color:var(--muted); font-size:13.5px}
+  table.cmp td{width:50%; font-size:13.5px; color:var(--muted)}
+  table.cmp td b{color:var(--ink)}
+  table.cmp td:first-child{border-right:1px solid var(--border)}
+
+  ol.steps{margin:6px 0 0; padding:0; list-style:none; counter-reset:s}
+  ol.steps li{counter-increment:s; display:grid; grid-template-columns:30px 1fr; gap:14px; padding:12px 0; border-top:1px solid var(--border)}
+  ol.steps li:first-child{border-top:none}
+  ol.steps li::before{content:counter(s); font-family:var(--f-mono); font-size:12px; color:var(--accent); padding-top:2px}
+  ol.steps p{margin:0; font-size:14.5px; color:var(--muted)}
+  ol.steps b{color:var(--ink); font-weight:600}
+
+  .callout{margin-top:16px; border:1px solid var(--border); border-left:3px solid var(--accent); border-radius:10px; padding:16px 18px; background:var(--surface)}
+  .callout h3{font-family:var(--f-mono); font-size:11.5px; letter-spacing:.06em; text-transform:uppercase; color:var(--accent); margin:0 0 8px}
+  .callout p{margin:0 0 10px; font-size:14px; color:var(--muted)}
+  .callout p:last-child{margin:0}
+  .callout b{color:var(--ink); font-weight:600}
+  .callout code{font-family:var(--f-mono); font-size:12px; color:var(--ink)}
+
+  .never{margin-top:16px; border:1px dashed var(--danger); border-radius:10px; padding:16px 18px; background:color-mix(in srgb,var(--danger) 7%,transparent)}
+  .never h3{font-family:var(--f-mono); font-size:12px; letter-spacing:.06em; text-transform:uppercase; color:var(--danger); margin:0 0 8px}
+  .never p{margin:0; font-size:14px; color:var(--muted)}
+  .never code{font-family:var(--f-mono); font-size:12px; color:var(--ink)}
+
+  .chips{display:flex; flex-wrap:wrap; gap:8px; margin:14px 0 0}
+  .chip{font-family:var(--f-mono); font-size:11px; padding:4px 9px; border-radius:20px; border:1px solid var(--border)}
+  .chip.r{color:var(--good); border-color:var(--good)}
+  .chip.w{color:var(--human); border-color:var(--human)}
+  .chip.d{color:var(--danger); border-color:var(--danger)}
+
+  footer{margin-top:44px; border-top:1px solid var(--border); padding:24px 0 0; font-family:var(--f-mono); font-size:12px; color:var(--muted); display:flex; flex-wrap:wrap; gap:6px 18px}
+  :where(a):focus-visible{outline:2px solid var(--accent); outline-offset:3px}
+  @media (max-width:520px){ h1{font-size:1.8rem} }
+</style>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Data Sense · Agent Builder Capstone</p>
+    <h1>MCP Server, Tools &amp; Connection — Data Flow</h1>
+    <p class="dek">How a registered server becomes something an agent can safely use: discover the tools and classify each one <code class="inl">read / write / destructive</code>; define an <code class="inl">auth_spec</code> and render a form from it; then envelope-encrypt the secret so it is fetched, used, and dropped — and written nowhere else.</p>
+    <nav class="toc">
+      <a href="#flow" data-n="01">The data flow</a>
+      <a href="#classify" data-n="02">Tool type: read / write / destructive</a>
+      <a href="#authspec" data-n="03">The auth_spec field</a>
+      <a href="#envelope" data-n="04">How the secret is stored</a>
+      <a href="#schema" data-n="05">Schema delta</a>
+      <a href="#spec" data-n="06">Task vs. our design</a>
+      <a href="#never" data-n="07">Where it must never appear</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section id="flow">
+    <div class="wrap">
+      <h2><span class="tick">/</span>The data flow</h2>
+      <p class="lede">Register &amp; discover happens once per server. Connect happens once per company. Use happens on every tool call.</p>
+    </div>
+    <div class="bleed">
+      <figure>
+        <div class="figframe">
+          <svg class="dfd" viewBox="0 0 986 726" role="img" aria-label="Sequence data-flow across seven participants: User, Registry Service, MCP Client, External MCP Server, Credential Vault, KMS, and PostgreSQL with row-level security. Phase 1 register and discover: (1) User posts the server address to the Registry Service; (2) Registry Service asks the MCP Client to discover it; (3) MCP Client calls initialize and tools/list on the external server; (4) the server returns its tool list; (5) the MCP Client returns capabilities; (6) the Registry Service classifies each tool read, write or destructive and inserts the mcp_servers row with an auth_spec and the mcp_tools rows with sensitivity; (7) it returns server_id, tools and auth_spec to the User. Phase 2 connect and add the token: (8) User gets the server, (9) Registry returns the auth_spec so the Connections form renders its fields, (10) User posts the secret fields to the Registry Service over TLS, (11) Registry asks the Credential Vault to encrypt the secret with a per-connection data key, (12) the Vault asks the KMS to wrap the data key, (13) the KMS returns the wrapped key, (14) the Vault inserts the connections row with tenant_id, server_id, ciphertext and wrapped_dek, (15) the Registry returns connected true and the plaintext is wiped from memory. Phase 3 use, fetch use drop: (16) a build gate selects 1 from connections by tenant_id and server_id; then on every tool call (17) the Vault reads the connections row, (18) unwraps the data key via KMS and decrypts in memory, (19) injects the credential into the MCP Client, (20) the MCP Client calls the external server with an Authorization bearer header, (21) the result returns and the credential is dropped, never written to config, logs, or checkpoints.">
+            <defs>
+              <marker id="m" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+              <marker id="ms" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7.5" markerHeight="7.5" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+            </defs>
+
+            <rect class="band" x="8" y="84" width="970" height="184" rx="9"/>
+            <text class="bandlabel" x="20" y="100">PHASE 1 · REGISTER &amp; DISCOVER — once per server</text>
+            <rect class="band" x="8" y="276" width="970" height="210" rx="9"/>
+            <text class="bandlabel" x="20" y="292">PHASE 2 · CONNECT — once per company</text>
+            <rect class="band" x="8" y="494" width="970" height="220" rx="9"/>
+            <text class="bandlabel" x="20" y="510">PHASE 3 · USE — fetch → use → drop, every tool call</text>
+
+            <g>
+              <rect class="head" x="14" y="34" width="96" height="42" rx="8"/><text class="htext" x="62" y="52" text-anchor="middle">User</text><text class="hkind" x="62" y="66" text-anchor="middle">browser</text>
+              <rect class="head" x="146" y="34" width="122" height="42" rx="8"/><text class="htext" x="207" y="52" text-anchor="middle">Registry Service</text><text class="hkind" x="207" y="66" text-anchor="middle">process</text>
+              <rect class="head" x="306" y="34" width="104" height="42" rx="8"/><text class="htext" x="358" y="52" text-anchor="middle">MCP Client</text><text class="hkind" x="358" y="66" text-anchor="middle">process</text>
+              <rect class="head" x="448" y="34" width="128" height="42" rx="4"/><rect class="head-in" x="452" y="38" width="120" height="34" rx="2"/><text class="htext" x="512" y="52" text-anchor="middle">External MCP</text><text class="hkind" x="512" y="66" text-anchor="middle">e.g. GitHub</text>
+              <rect class="head" x="606" y="34" width="118" height="42" rx="8"/><text class="htext" x="665" y="52" text-anchor="middle">Credential Vault</text><text class="hkind" x="665" y="66" text-anchor="middle">process</text>
+              <rect class="head" x="762" y="34" width="72" height="42" rx="4"/><rect class="head-in" x="766" y="38" width="64" height="34" rx="2"/><text class="htext" x="798" y="56" text-anchor="middle">KMS</text>
+              <rect class="head" x="856" y="34" width="122" height="42" rx="3"/><text class="htext" x="917" y="52" text-anchor="middle">PostgreSQL</text><text class="hkind" x="917" y="66" text-anchor="middle">RLS on tenant_id</text>
+            </g>
+
+            <path class="life" d="M62 76 V706"/>
+            <path class="life" d="M207 76 V706"/>
+            <path class="life" d="M358 76 V706"/>
+            <path class="life" d="M512 76 V706"/>
+            <path class="life" d="M665 76 V706"/>
+            <path class="life" d="M798 76 V706"/>
+            <path class="life" d="M917 76 V706"/>
+
+            <path class="msg" d="M62 118 H207" marker-end="url(#m)"/><text class="mlab" x="134" y="114" text-anchor="middle"><tspan class="n">1</tspan>  POST /mcp-servers { address }</text>
+            <path class="msg" d="M207 142 H358" marker-end="url(#m)"/><text class="mlab" x="282" y="138" text-anchor="middle"><tspan class="n">2</tspan>  discover(address)</text>
+            <path class="msg" d="M358 166 H512" marker-end="url(#m)"/><text class="mlab" x="435" y="162" text-anchor="middle"><tspan class="n">3</tspan>  initialize · tools/list</text>
+            <path class="msg ret" d="M512 190 H358" marker-end="url(#m)"/><text class="mlab" x="435" y="186" text-anchor="middle"><tspan class="n">4</tspan>  tools[] + annotations (hints only)</text>
+            <path class="msg ret" d="M358 214 H207" marker-end="url(#m)"/><text class="mlab" x="282" y="210" text-anchor="middle"><tspan class="n">5</tspan>  capabilities</text>
+            <path class="msg" d="M207 240 H917" marker-end="url(#m)"/><text class="mlab" x="560" y="236" text-anchor="middle"><tspan class="n">6</tspan>  classify() → INSERT mcp_servers (+ auth_spec) · mcp_tools (+ sensitivity)</text>
+            <path class="msg ret" d="M207 264 H62" marker-end="url(#m)"/><text class="mlab" x="134" y="260" text-anchor="middle"><tspan class="n">7</tspan>  200 { server_id, tools[], auth_spec }</text>
+
+            <path class="msg" d="M62 314 H207" marker-end="url(#m)"/><text class="mlab" x="134" y="310" text-anchor="middle"><tspan class="n">8</tspan>  GET /mcp-servers/{id}</text>
+            <path class="msg ret" d="M207 338 H62" marker-end="url(#m)"/><text class="mlab" x="134" y="334" text-anchor="middle"><tspan class="n">9</tspan>  auth_spec → form renders fields</text>
+            <path class="msg sec" d="M62 366 H207" marker-end="url(#ms)"/><text class="mlab sec" x="134" y="362" text-anchor="middle"><tspan class="n">10</tspan>  POST /connections { server_id, &lt;secret fields&gt; }</text>
+            <path class="msg sec" d="M207 392 H665" marker-end="url(#ms)"/><text class="mlab sec" x="436" y="388" text-anchor="middle"><tspan class="n">11</tspan>  encrypt(secret) with per-connection DEK</text>
+            <path class="msg" d="M665 416 H798" marker-end="url(#m)"/><text class="mlab" x="731" y="412" text-anchor="middle"><tspan class="n">12</tspan>  wrap(DEK) with master key</text>
+            <path class="msg ret" d="M798 440 H665" marker-end="url(#m)"/><text class="mlab" x="731" y="436" text-anchor="middle"><tspan class="n">13</tspan>  wrapped_dek</text>
+            <path class="msg" d="M665 464 H917" marker-end="url(#m)"/><text class="mlab" x="791" y="460" text-anchor="middle"><tspan class="n">14</tspan>  INSERT connections { tenant_id, server_id, ciphertext, wrapped_dek }</text>
+            <path class="msg ret" d="M207 486 H62" marker-end="url(#m)"/><text class="mlab" x="134" y="482" text-anchor="middle"><tspan class="n">15</tspan>  200 { connected: true }</text>
+            <text class="note" x="436" y="482" text-anchor="middle">plaintext wiped from memory · never logged or echoed</text>
+
+            <path class="msg ret" d="M207 534 H917" marker-end="url(#m)"/><text class="mlab" x="560" y="530" text-anchor="middle"><tspan class="n">16</tspan>  SELECT 1 FROM connections WHERE tenant_id, server_id   —  build gate</text>
+            <text class="note" x="493" y="556" text-anchor="middle">— then, on every tool call the agent makes —</text>
+            <path class="msg" d="M665 578 H917" marker-end="url(#m)"/><text class="mlab" x="791" y="574" text-anchor="middle"><tspan class="n">17</tspan>  read connections row</text>
+            <path class="msg" d="M665 602 H798" marker-end="url(#m)"/><text class="mlab" x="731" y="598" text-anchor="middle"><tspan class="n">18</tspan>  unwrap DEK → decrypt (memory only)</text>
+            <path class="msg sec" d="M665 626 H358" marker-end="url(#ms)"/><text class="mlab sec" x="511" y="622" text-anchor="middle"><tspan class="n">19</tspan>  inject credential</text>
+            <path class="msg sec" d="M358 650 H512" marker-end="url(#ms)"/><text class="mlab sec" x="435" y="646" text-anchor="middle"><tspan class="n">20</tspan>  tool call + Authorization: Bearer …</text>
+            <path class="msg ret" d="M512 674 H358" marker-end="url(#m)"/><text class="mlab" x="435" y="670" text-anchor="middle"><tspan class="n">21</tspan>  result</text>
+            <text class="note" x="600" y="696" text-anchor="middle">credential dropped · never written to agent config, logs, or checkpoints</text>
+          </svg>
+        </div>
+        <figcaption>
+          <b>Registration is discovery only</b> (1–7): no secret is involved. Step&nbsp;6 also runs <code class="inl">classify()</code> so every <code class="inl">mcp_tools</code> row carries a <code class="inl">sensitivity</code>, and the <code class="inl">auth_spec</code> on <code class="inl">mcp_servers</code> describes the <em>shape</em> of the credential, never a value.
+          <b>Connect is the one moment a secret is in flight</b> (10–14): it travels once over TLS, the Vault encrypts it with a fresh per-connection key, the KMS wraps that key, and only the two ciphertexts are stored.
+          <b>Use is stateless</b> (16–21): decrypt on demand, one outbound call, drop.
+        </figcaption>
+      </figure>
+      <div class="legend">
+        <i><span class="sw"></span> request / write</i>
+        <i><span class="sw ret"></span> response</i>
+        <i><span class="sw sec"></span> carries the live secret</i>
+      </div>
+    </div>
+  </section>
+
+  <section id="classify" class="wrap">
+    <h2><span class="tick">/</span>Tool type — read / write / destructive</h2>
+    <p class="lede">The value on <code class="inl">mcp_tools.sensitivity</code> is computed by the platform at discovery (step&nbsp;6), conservatively, and a tenant can never lower it. It is the single input the approval gate reads.</p>
+
+    <div class="chips">
+      <span class="chip r">read — no change to the outside world</span>
+      <span class="chip w">write — creates or modifies</span>
+      <span class="chip d">destructive — deletes or is irreversible</span>
+    </div>
+
+    <p style="margin-top:16px"><strong>classify(server, tool)</strong> — highest priority first:</p>
+    <pre><code>  <span class="k">1</span>  override catalog   (server, tool) pinned by a platform admin         <span class="c">→ use it</span>
+  <span class="k">2</span>  MCP annotations    destructiveHint == true                            <span class="c">→ destructive</span>
+                     readOnlyHint    == true                            <span class="c">→ read</span>
+                     readOnlyHint    == false                           <span class="c">→ write</span>
+  <span class="k">3</span>  name / description  /delete|remove|drop|purge|revoke|wipe|merge/     <span class="c">→ destructive</span>
+                      /create|update|post|send|add|set|write|patch/     <span class="c">→ write</span>
+                      /list|get|search|read|fetch|query|describe/       <span class="c">→ read</span>
+  <span class="k">4</span>  no confident match                                                  <span class="c">→ write   (fail-safe — never 'read')</span></code></pre>
+
+    <ol class="steps">
+      <li><p><b>Stored on <code class="inl">mcp_tools</code>:</b> <code class="inl">sensitivity</code> (the final call), <code class="inl">sensitivity_source</code> (<code class="inl">override | annotation | heuristic | default</code>), <code class="inl">annotations jsonb</code> (the raw hints, kept for audit). So you can always show <em>why</em> a tool is marked the way it is.</p></li>
+      <li><p><b>MCP annotations are hints, not truth.</b> The MCP spec says clients must not rely on <code class="inl">readOnlyHint</code> / <code class="inl">destructiveHint</code> for security. They are used only when they make a tool <em>more</em> restrictive; otherwise the heuristic runs; unknown falls to <code class="inl">write</code>.</p></li>
+      <li><p><b>The tenant cannot dial it down.</b> At registration the classified list is shown read-only. Only a platform admin overrides — via the global <code class="inl">tool_classification_overrides</code> catalog (server pattern, tool, sensitivity, reason, set_by), which is audited and wins as priority&nbsp;1. If a tenant could mark everything <code class="inl">read</code>, Rule&nbsp;4 is bypassed.</p></li>
+      <li><p><b>How it enforces the gate — three points, not one:</b></p></li>
+    </ol>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Stage</th><th>What it does with <code>sensitivity</code></th></tr></thead>
+        <tbody>
+          <tr><td class="c1">Build</td><td class="c3">Any <code>write</code> / <code>destructive</code> tool → <code>require_approval = true</code> is written into the config. A config that sets it <code>false</code> on such a tool is rejected.</td></tr>
+          <tr><td class="c1">Runtime</td><td class="c3">Before <em>every</em> tool call the runtime re-reads <code>mcp_tools.sensitivity</code> from the DB. <code>write</code> / <code>destructive</code> → LangGraph interrupt — regardless of the config flag or the prompt. This is the check that survives "delete the app-level filter".</td></tr>
+          <tr><td class="c1">Publish</td><td class="c3">A <code>write</code> / <code>destructive</code> tool with no approval gate drives the safety score below threshold → Publish disabled (grading check&nbsp;3).</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:16px"><strong>On re-introspection:</strong> if a server changes and a tool shifts <code class="inl">read → write</code>, every agent version using it is re-scored and flagged; if it drops below the threshold it can't be re-published until its config adds the gate.</p>
+  </section>
+
+  <section id="authspec" class="wrap">
+    <h2><span class="tick">/</span>The <code class="inl">auth_spec</code> field</h2>
+    <p class="lede">A JSONB column on <code class="inl">mcp_servers</code>. It is the contract between the server and the Connections form — and between the form and the Vault.</p>
+    <pre><code>{
+  <span class="k">"type"</span>: <span class="s">"bearer"</span>,        <span class="c">// bearer | header | basic | query — how the secret attaches to MCP calls</span>
+  <span class="k">"fields"</span>: [
+    {
+      <span class="k">"key"</span>: <span class="s">"token"</span>,
+      <span class="k">"label"</span>: <span class="s">"GitHub personal access token"</span>,
+      <span class="k">"help"</span>: <span class="s">"Needs 'repo' scope — github.com/settings/tokens"</span>,
+      <span class="k">"secret"</span>: <span class="k">true</span>          <span class="c">// secret:true → encrypted;  secret:false → stored as plain config</span>
+    }
+  ],
+  <span class="k">"headerName"</span>: <span class="s">null</span>,        <span class="c">// required when type is "header" — the header name itself</span>
+  <span class="k">"queryParam"</span>: <span class="s">null</span>         <span class="c">// required when type is "query" — the URL param name</span>
+}</code></pre>
+    <ol class="steps">
+      <li><p><b>Render the form.</b> Step&nbsp;9 hands <code class="inl">fields[]</code> to the UI. One field for GitHub or Slack; two for <code class="inl">basic</code>; a server that needs an org name or base URL alongside the token lists those as extra fields with <code class="inl">secret:false</code>.</p></li>
+      <li><p><b>Split on save.</b> Step&nbsp;11 sends only <code class="inl">secret:true</code> values to the Vault → <code class="inl">connections.ciphertext</code>. Non-secret values go to a plain <code class="inl">connections.config jsonb</code> — useful, not sensitive, never encrypted.</p></li>
+      <li><p><b>Verify.</b> No separate <code class="inl">test</code> call — the Registry Service re-runs the <em>same</em> <code class="inl">tools/list</code> discovery call from Phase 1, now with the submitted credential attached per <code class="inl">type</code>. Success → store and return <code class="inl">connected: true</code>; failure → 400, nothing is written. One mechanism serves both discovery and verification instead of a second server-specific concept.</p></li>
+      <li><p><b>Attach at call time.</b> Step&nbsp;20 uses <code class="inl">type</code> to decide: <code class="inl">bearer</code> → <code class="inl">Authorization: Bearer</code>, <code class="inl">header</code> → the named header from <code class="inl">headerName</code>, <code class="inl">basic</code> → a Base64 <code class="inl">Authorization: Basic</code> of the first two fields, <code class="inl">query</code> → a URL param named by <code class="inl">queryParam</code>.</p></li>
+    </ol>
+    <p>Where it comes from: always the registrant, on the Register form, at registration time — never captured from the server. Real MCP servers don't advertise this in <code class="inl">tools/list</code>, so the "if advertised, capture it" path was dropped rather than built as dead code (DESIGN-NOTES §2.7 addendum). The platform then treats <code class="inl">auth_spec</code> as read-only.</p>
+  </section>
+
+  <section id="envelope" class="wrap">
+    <h2><span class="tick">/</span>How the secret is stored — two locks, not one</h2>
+    <p class="lede">This is <strong>envelope encryption</strong>. The token goes behind two keys, and the database only ever holds the locked versions (steps 11–14).</p>
+
+    <pre><code>connections row
+  <span class="k">ciphertext</span>    = token  encrypted with a fresh per-connection <span class="s">Data Encryption Key (DEK)</span>
+  <span class="k">wrapped_dek</span>   = that DEK encrypted with the <span class="s">KMS master key</span>   <span class="c">(master key never leaves the KMS)</span>
+  <span class="k">nonce</span>, <span class="k">key_version</span>                                      <span class="c">metadata — not secret</span>
+  <span class="c">— never stored: plaintext token · plaintext DEK · master key</span></code></pre>
+
+    <p style="margin-top:16px">To recover the token you need <strong>both</strong> the row <strong>and</strong> the right to call the KMS. A stolen database dump on its own is inert — every field in it is already encrypted.</p>
+
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Why two layers</th><th>What it buys you</th></tr></thead>
+        <tbody>
+          <tr><td class="c1">Blast radius</td><td class="c3">DB compromise ≠ key compromise. The KMS is the trust boundary; the master key is never in the app or the DB.</td></tr>
+          <tr><td class="c1">Key rotation</td><td class="c3">Rotate the master key by re-wrapping the small DEKs — you never re-encrypt every stored token.</td></tr>
+          <tr><td class="c1">Least use</td><td class="c3">The master key only ever encrypts tiny keys, not payloads — minimal exposure, fits KMS rate limits.</td></tr>
+          <tr><td class="c1">Audit</td><td class="c3">The KMS logs every unwrap: "credential X decrypted at time T" — an access trail a plain column can't give you.</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <p style="margin-top:16px"><strong>Reverse path (steps 17–18):</strong> <code class="inl">read row → KMS unwraps wrapped_dek → plaintext DEK → decrypt ciphertext → token in memory → one call → drop DEK + token</code>.</p>
+
+    <p style="margin-top:16px"><strong>Update — 2026-09-12:</strong> this reverse path now has its first real caller: the scheduled liveness check (<code class="inl">health.ts</code> → <code class="inl">getConnectionAuth()</code>) runs it once per tick against every connected server. Two side effects land on the <code class="inl">connections</code> row every time: <code class="inl">last_used_at</code> is stamped, and <code class="inl">status</code> is set from the result — a 401/403 back means the token itself was rejected, so <code class="inl">status</code> flips to <code class="inl">expired</code> (the <em>server</em> stays <code class="inl">mcp_servers.status = 'ok'</code>, since it clearly responded); anything else that succeeds sets it back to <code class="inl">active</code>. Same reverse path an actual tool call will use once the Run lane exists — this is that pattern's first exercise, not a second one.</p>
+
+    <div class="callout">
+      <h3>For the capstone — no paid KMS</h3>
+      <p>The "KMS" is a single master key in an env var (or a key file); <code>wrap</code> / <code>unwrap</code> is a small function — e.g. Fernet for the inner layer, Fernet-with-the-master-key for wrapping the DEK. Same shape, same guarantees, runs in <code>docker compose</code>.</p>
+    </div>
+  </section>
+
+  <section id="schema" class="wrap">
+    <h2><span class="tick">/</span>Schema delta</h2>
+    <p class="lede">What these two mechanisms add to the data model.</p>
+    <div class="tablewrap">
+      <table>
+        <thead><tr><th>Table · column</th><th>Type</th><th>Note</th></tr></thead>
+        <tbody>
+          <tr><td class="c1">mcp_servers.auth_spec</td><td class="c2">jsonb</td><td class="c3"><b>new.</b> Credential shape — type, fields, optional headerName/queryParam. Registrant-defined, never derived from the server. Holds no value.</td></tr>
+          <tr><td class="c1">mcp_servers.transport</td><td class="c2">text</td><td class="c3"><b>new.</b> <code>streamable_http | sse | stdio</code> — only <code>streamable_http</code> is implemented; the others are rejected at registration.</td></tr>
+          <tr><td class="c1">mcp_servers.status / last_checked_at</td><td class="c2">text / timestamptz</td><td class="c3"><b>new.</b> Written by the scheduled liveness check, not by registration. <b>Update — 2026-09-12:</b> a connected server that comes back 401/403 no longer reads <code>dead</code> here — that's now recorded as the <em>connection</em> going <code>expired</code> (below), since the server itself clearly responded.</td></tr>
+          <tr><td class="c1">mcp_tools.sensitivity</td><td class="c2">text</td><td class="c3"><code>read | write | destructive</code>, NOT NULL. The only thing the gate reads.</td></tr>
+          <tr><td class="c1">mcp_tools.sensitivity_source</td><td class="c2">text</td><td class="c3"><b>new.</b> <code>override | annotation | heuristic | default</code> — traceability.</td></tr>
+          <tr><td class="c1">mcp_tools.annotations</td><td class="c2">jsonb</td><td class="c3"><b>new.</b> Raw MCP hints as received, for audit.</td></tr>
+          <tr><td class="c1">tool_classification_overrides</td><td class="c2">table</td><td class="c3"><b>new, platform-level (no tenant_id).</b> <code>(server_pattern, tool_name, sensitivity, reason, set_by)</code>. Priority 1 in <code>classify()</code>.</td></tr>
+          <tr><td class="c1">connections.ciphertext</td><td class="c2">bytea</td><td class="c3">the <code>secret:true</code> fields, AEAD-encrypted under the DEK.</td></tr>
+          <tr><td class="c1">connections.wrapped_dek</td><td class="c2">bytea</td><td class="c3">the DEK, encrypted under the KMS master key.</td></tr>
+          <tr><td class="c1">connections.config</td><td class="c2">jsonb</td><td class="c3"><b>optional.</b> The <code>secret:false</code> fields — base URL, org name. Plain, queryable.</td></tr>
+          <tr><td class="c1">connections.status</td><td class="c2">text</td><td class="c3"><b>new, 2026-09-12.</b> <code>active | expired</code>, <code>default 'active'</code>. Set by the liveness check's use of this credential (401/403 → <code>expired</code>); reset to <code>active</code> the moment the credential is replaced.</td></tr>
+          <tr><td class="c1">connections.last_used_at</td><td class="c2">timestamptz</td><td class="c3"><b>new, 2026-09-12.</b> Stamped every time this credential is actually attached to an outgoing call — the Connections screen's "Last used" column.</td></tr>
+          <tr><td class="c1">connections</td><td class="c2">UNIQUE</td><td class="c3"><code>(tenant_id, server_id)</code> — one connection per server per company.</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="spec" class="wrap">
+    <h2><span class="tick">/</span>What the task fixes vs. what we chose</h2>
+    <p class="lede">Rule&nbsp;3 and Step&nbsp;2 define an <em>outcome</em>. Every mechanism below it is our design decision — the task says so: <em>"how you satisfy them is your design decision."</em></p>
+    <div class="tablewrap">
+      <table class="cmp">
+        <thead><tr><th>The task fixes (Rule 3 + Step 2)</th><th>We chose</th></tr></thead>
+        <tbody>
+          <tr><td><b>"it is encrypted immediately"</b></td><td>Envelope encryption — a fresh per-connection DEK, AEAD, KMS-wrapped key</td></tr>
+          <tr><td><b>"fetch it, use it, drop it"</b></td><td>A "Credential Vault" module owns that lifecycle; decrypt in memory only, never cached</td></tr>
+          <tr><td><b>never in config / prompt / log / conversation</b></td><td>The agent config references <code>server_id</code> by capability — the value is never in it</td></tr>
+          <tr><td><b>"we search everything you stored… finding it is a fail"</b></td><td>Only <code>ciphertext</code> + <code>wrapped_dek</code> are ever persisted</td></tr>
+          <tr><td><b>"nothing that does not strictly need it"</b></td><td>KMS master-key boundary; per-unwrap audit log; least-access reads scoped by RLS</td></tr>
+          <tr><td><b>tools marked read / write / destructive</b></td><td>The <code>classify()</code> pipeline, the fail-safe default, the platform-only override catalog</td></tr>
+        </tbody>
+      </table>
+    </div>
+    <div class="callout">
+      <h3>The floor</h3>
+      <p>The minimum that passes Rule&nbsp;3's grep test: <b>one</b> symmetric key (a single Fernet key in an env var) doing authenticated encryption on the token column, plus disciplined fetch→use→drop. Envelope encryption + a KMS boundary is a <b>strengthening</b> — rotation, blast radius, audit — not a task requirement. "Vault" is our name for the module, not a mandate to run HashiCorp Vault.</p>
+    </div>
+  </section>
+
+  <section id="never" class="wrap">
+    <h2><span class="tick">/</span>Where the secret must never appear</h2>
+    <div class="never">
+      <h3>Grep target — finding it anywhere is a fail</h3>
+      <p>The plaintext credential exists only in transit (step 10, TLS) and briefly in Vault memory (steps 11, 18). It is <b>never</b> written to <code>agent_versions.config</code>, request/response logs, the LangGraph checkpoint tables, saved playground transcripts, or any API response body. The <code>auth_spec</code> and the tool <code>sensitivity</code> are safe to expose freely — they are metadata, not values.</p>
+    </div>
+  </section>
+
+  <footer class="wrap">
+    <span>Data Sense · Agent Builder Capstone</span>
+    <span>MCP connection data flow</span>
+    <span>Companion to the architecture, data-model &amp; flow docs</span>
+  </footer>
+</main>

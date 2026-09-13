@@ -1,0 +1,573 @@
+<title>Data Sense Platform Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600;700&family=IBM+Plex+Serif:ital,wght@0,400;0,500;1,400&display=swap">
+<style>
+  :root{
+    --bg:#f3f5f7; --surface:#ffffff; --surface-2:#e9edf1; --ink:#1a2129;
+    --muted:#586573; --border:#d3dae1; --line:#9aa7b2;
+    --accent:#0e7b85; --accent-soft:#dceff0;
+    --human:#a9631a; --human-soft:#f2e7d6;
+    --good:#2f7d4f;
+    --maxw:730px; --wide:980px;
+    --f-display:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+    --f-body:'IBM Plex Serif',Georgia,'Times New Roman',serif;
+    --f-mono:'IBM Plex Mono',ui-monospace,'SFMono-Regular',Menlo,monospace;
+    --s1:1.6rem; --s2:1.4rem;
+  }
+  @media (prefers-color-scheme:dark){
+    :root:not([data-theme="light"]){
+      --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+      --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+      --accent:#48b8c1; --accent-soft:#123037;
+      --human:#d99a52; --human-soft:#2c2318;
+      --good:#63b585;
+    }
+  }
+  :root[data-theme="dark"]{
+    --bg:#0f141a; --surface:#171f27; --surface-2:#1e2833; --ink:#e3e9ee;
+    --muted:#95a3af; --border:#2c3844; --line:#5e6d7a;
+    --accent:#48b8c1; --accent-soft:#123037;
+    --human:#d99a52; --human-soft:#2c2318;
+    --good:#63b585;
+  }
+
+  *{box-sizing:border-box}
+  html{-webkit-text-size-adjust:100%}
+  body{
+    margin:0; background:var(--bg); color:var(--ink);
+    font-family:var(--f-body); font-size:17px; line-height:1.65;
+    font-feature-settings:"kern";
+  }
+  .wrap{max-width:var(--maxw); margin:0 auto; padding:0 24px}
+  .bleed{max-width:var(--wide); margin:0 auto; padding:0 24px}
+
+  /* ---- masthead ---- */
+  header{
+    border-bottom:1px solid var(--border);
+    padding:64px 0 34px;
+    background:
+      linear-gradient(var(--bg),var(--bg)) padding-box,
+      repeating-linear-gradient(90deg,transparent 0 26px,color-mix(in srgb,var(--line) 22%,transparent) 26px 27px) border-box;
+  }
+  .eyebrow{
+    font-family:var(--f-mono); font-size:12px; letter-spacing:.16em;
+    text-transform:uppercase; color:var(--accent); margin:0 0 18px;
+  }
+  h1{
+    font-family:var(--f-display); font-weight:600; font-size:2.55rem;
+    line-height:1.1; letter-spacing:-.018em; margin:0 0 16px;
+    text-wrap:balance;
+  }
+  .dek{font-size:1.12rem; color:var(--muted); margin:0 0 26px; max-width:60ch}
+  .meta{
+    display:flex; flex-wrap:wrap; gap:8px 20px;
+    font-family:var(--f-mono); font-size:12px; color:var(--muted);
+    letter-spacing:.02em;
+  }
+  .meta span::before{content:"— "; color:var(--line)}
+
+  /* ---- contents ---- */
+  nav.toc{
+    margin:30px 0 0; padding:16px 0 0; border-top:1px solid var(--border);
+    display:flex; flex-wrap:wrap; gap:6px 22px;
+    font-family:var(--f-mono); font-size:12.5px;
+  }
+  nav.toc a{color:var(--muted); text-decoration:none}
+  nav.toc a:hover{color:var(--accent)}
+  nav.toc a::before{content:attr(data-n) " "; color:var(--accent); opacity:.7}
+
+  main{padding:8px 0 80px}
+  section{padding:44px 0 0}
+  h2{
+    font-family:var(--f-display); font-weight:600; font-size:1.5rem;
+    letter-spacing:-.01em; margin:0 0 6px; text-wrap:balance;
+  }
+  h2 .tick{color:var(--accent); font-weight:500; margin-right:.5ch}
+  .lede{color:var(--muted); margin:0 0 22px}
+  p{margin:0 0 18px}
+  strong{font-weight:600; color:var(--ink)}
+  a{color:var(--accent)}
+  code{
+    font-family:var(--f-mono); font-size:.86em;
+    background:var(--surface-2); padding:.1em .4em; border-radius:3px;
+  }
+
+  /* ---- thesis callout ---- */
+  .thesis{
+    font-family:var(--f-display); font-size:1.22rem; line-height:1.5;
+    font-weight:400; color:var(--ink);
+    border-left:3px solid var(--accent);
+    padding:4px 0 4px 22px; margin:0;
+  }
+  .thesis b{font-weight:600}
+
+  /* ---- figure ---- */
+  figure{margin:26px 0 0; padding:0}
+  .figframe{
+    background:var(--surface); border:1px solid var(--border);
+    border-radius:10px; padding:22px 20px 16px; overflow-x:auto;
+  }
+  .figframe svg{display:block; min-width:640px; max-width:100%; height:auto; color:var(--line)}
+  figcaption{
+    font-family:var(--f-body); font-size:14.5px; color:var(--muted);
+    line-height:1.55; margin-top:14px; max-width:78ch;
+  }
+  figcaption b{color:var(--ink); font-weight:600}
+
+  /* ---- diagram primitives ---- */
+  .dgm .box{fill:var(--surface); stroke:var(--border); stroke-width:1.2}
+  .dgm .lane{fill:var(--surface-2); stroke:none}
+  .dgm .container{fill:none; stroke:var(--border); stroke-width:1.2; stroke-dasharray:2 3}
+  .dgm .pausebar{fill:var(--human)}
+  .dgm .box-pause{stroke:var(--human); stroke-width:1.4}
+  .dgm text{font-family:var(--f-mono); font-size:12px; fill:var(--ink)}
+  .dgm .t-sub{font-size:9.5px; fill:var(--muted)}
+  .dgm .t-lane{font-size:10px; fill:var(--muted); letter-spacing:.14em}
+  .dgm .t-edge{
+    font-size:9.5px; fill:var(--muted);
+    paint-order:stroke; stroke:var(--surface); stroke-width:3px; stroke-linejoin:round;
+  }
+  .dgm .t-chip{font-size:10px; fill:var(--ink)}
+  .dgm .edge{stroke:var(--line); stroke-width:1.4; fill:none}
+  .dgm .edge--accent{stroke:var(--accent)}
+  .dgm .edge--human{stroke:var(--human)}
+  .dgm .edge--dash{stroke-dasharray:5 4}
+  .dgm marker#mk path{fill:var(--line)}
+  .dgm marker#mk-accent path{fill:var(--accent)}
+  .dgm marker#mk-human path{fill:var(--human)}
+  .dgm .chip{fill:var(--surface-2); stroke:var(--border); stroke-width:1}
+  .dgm .chip--accent{fill:var(--accent-soft); stroke:var(--accent)}
+  .dgm .bolt{stroke:var(--human); stroke-width:1.6; fill:none}
+
+  .legend{
+    display:flex; flex-wrap:wrap; gap:6px 20px; margin-top:12px;
+    font-family:var(--f-mono); font-size:11px; color:var(--muted);
+  }
+  .legend i{font-style:normal; display:inline-flex; align-items:center; gap:7px}
+  .legend .sw{width:22px; height:0; border-top:2px solid var(--line); display:inline-block}
+  .legend .sw.acc{border-color:var(--accent)}
+  .legend .sw.hum{border-color:var(--human)}
+  .legend .sw.dash{border-top-style:dashed}
+  .legend .sq{width:11px; height:11px; border:1.4px solid var(--human); border-radius:2px; display:inline-block}
+  .legend .sq.xt{border-color:var(--accent); background:var(--accent-soft)}
+
+  /* ---- numbered flow ---- */
+  ol.flow{list-style:none; margin:8px 0 0; padding:0; counter-reset:step}
+  ol.flow li{
+    counter-increment:step;
+    display:grid; grid-template-columns:44px 1fr; gap:18px;
+    padding:18px 0; border-top:1px solid var(--border);
+  }
+  ol.flow li:first-child{border-top:none}
+  ol.flow li::before{
+    content:counter(step,decimal-leading-zero);
+    font-family:var(--f-mono); font-size:13px; color:var(--accent);
+    padding-top:2px; letter-spacing:.02em;
+  }
+  ol.flow h3{
+    font-family:var(--f-display); font-size:1.02rem; font-weight:600;
+    margin:0 0 5px;
+  }
+  ol.flow p{margin:0; font-size:15.5px; color:var(--muted)}
+  ol.flow .hit{color:var(--human); font-weight:600}
+
+  /* ---- rules table ---- */
+  .tablewrap{overflow-x:auto; margin-top:10px; border:1px solid var(--border); border-radius:10px}
+  table{border-collapse:collapse; width:100%; min-width:640px; font-size:14.5px}
+  thead th{
+    font-family:var(--f-mono); font-size:11px; letter-spacing:.1em; text-transform:uppercase;
+    color:var(--muted); text-align:left; background:var(--surface-2);
+    padding:12px 16px; border-bottom:1px solid var(--border);
+  }
+  tbody td{padding:14px 16px; border-bottom:1px solid var(--border); vertical-align:top}
+  tbody tr:last-child td{border-bottom:none}
+  tbody tr:nth-child(even){background:color-mix(in srgb,var(--surface-2) 45%,transparent)}
+  td.rule{font-family:var(--f-display); font-weight:600; width:20%; color:var(--ink)}
+  td.rule b{display:block; font-family:var(--f-mono); font-size:11px; color:var(--accent); font-weight:500; margin-bottom:3px}
+  td.where{font-family:var(--f-mono); font-size:12.5px; color:var(--muted); width:24%}
+  td.mech{color:var(--muted)}
+  td.mech b{color:var(--ink)}
+
+  /* ---- open questions ---- */
+  .qgrid{display:grid; gap:2px; margin-top:8px; background:var(--border); border:1px solid var(--border); border-radius:10px; overflow:hidden}
+  .qgrid > div{background:var(--surface); padding:18px 20px}
+  .qgrid h3{font-family:var(--f-display); font-size:1rem; font-weight:600; margin:0 0 6px}
+  .qgrid p{margin:0; font-size:14.5px; color:var(--muted)}
+  @media(min-width:620px){.qgrid{grid-template-columns:1fr 1fr}}
+
+  footer{
+    border-top:1px solid var(--border); padding:26px 0 60px;
+    font-family:var(--f-mono); font-size:12px; color:var(--muted);
+    display:flex; flex-wrap:wrap; gap:6px 18px;
+  }
+
+  :where(a,summary):focus-visible{outline:2px solid var(--accent); outline-offset:3px; border-radius:2px}
+  @media (prefers-reduced-motion:no-preference){html{scroll-behavior:smooth}}
+  @media (max-width:560px){
+    h1{font-size:2rem}
+    ol.flow li{grid-template-columns:32px 1fr; gap:12px}
+  }
+</style>
+
+<header>
+  <div class="wrap">
+    <p class="eyebrow">Data Sense · Agent Builder Capstone</p>
+    <h1>Platform Architecture</h1>
+    <p class="dek">A high-level design for the thing that builds agents — how a plain-English description becomes a deployed, publishable, multi-tenant agent, and how each of the eight rules is made true by structure rather than discipline.</p>
+    <div class="meta">
+      <span>Working draft</span><span>2026-09-08</span><span>High-level system design</span><span>Pre-build</span>
+    </div>
+    <nav class="toc">
+      <a href="#thesis" data-n="00">The one decision</a>
+      <a href="#overview" data-n="01">System overview</a>
+      <a href="#flow" data-n="02">The six-step flow</a>
+      <a href="#rules" data-n="03">Rules → mechanism</a>
+      <a href="#durable" data-n="04">Surviving restarts &amp; long waits</a>
+      <a href="#open" data-n="05">Decisions still open</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+  <section id="thesis" class="wrap">
+    <p class="thesis">The platform is a <b>build pipeline</b> and a <b>runtime</b> sharing one multi-tenant datastore. An agent is never generated code — it is a <b>configuration document</b> the runtime assembles. And every place the process waits for a human is a <b>durable graph pause</b>, so a build or an approval can sit for days across redeploys and still resume exactly where it stopped.</p>
+  </section>
+
+  <section id="overview">
+    <div class="wrap">
+      <h2><span class="tick">/</span>System overview</h2>
+      <p class="lede">Four planes: clients, an authenticating edge, the platform services, and one Postgres instance that both enforces isolation and stores durable graph state.</p>
+    </div>
+    <div class="bleed">
+      <figure>
+        <div class="figframe">
+          <svg class="dgm" viewBox="0 0 940 690" role="img" aria-label="Layered architecture: clients enter through an authenticating edge that stamps a tenant id into a Postgres session variable; platform services for build, run and publish sit above one Postgres instance with row-level security and a LangGraph checkpointer; a credential vault holds ciphertext wrapped by a KMS; the agent runtime talks to external MCP servers with writes gated by a human approval step.">
+            <defs>
+              <marker id="mk" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+              <marker id="mk-accent" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+              <marker id="mk-human" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z"/></marker>
+            </defs>
+
+            <!-- ===== CLIENTS ===== -->
+            <text class="t-lane" x="20" y="14">CLIENTS · ALL AUTHENTICATED</text>
+            <rect class="box" x="20" y="18" width="560" height="52" rx="6"/>
+            <text x="300" y="36" text-anchor="middle">Web app (browser)</text>
+            <text class="t-sub" x="300" y="50" text-anchor="middle">tenant user → Registry · Build · My Agents · Marketplace</text>
+            <text class="t-sub" x="300" y="62" text-anchor="middle">platform admin → also Admin Review</text>
+
+            <rect class="box" x="640" y="18" width="280" height="52" rx="6"/>
+            <text x="780" y="36" text-anchor="middle">External API callers</text>
+            <text class="t-sub" x="780" y="50" text-anchor="middle">token auth · POST /agents/{id}/invoke</text>
+            <text class="t-sub" x="780" y="62" text-anchor="middle">wrong tenant → 404, not 403</text>
+
+            <!-- to the edge -->
+            <path class="edge" d="M300 70 V116" stroke-width="1.8" marker-end="url(#mk)"/>
+            <text class="t-edge" x="310" y="96">session + JWT</text>
+            <path class="edge" d="M780 70 V116" stroke-width="1.8" marker-end="url(#mk)"/>
+            <text class="t-edge" x="790" y="96">API token</text>
+
+            <!-- ===== EDGE ===== -->
+            <text class="t-lane" x="150" y="112">EDGE — APP SERVER · plumbing, no product logic</text>
+            <rect class="box" x="150" y="118" width="650" height="58" rx="6"/>
+            <rect class="box" x="166" y="126" width="180" height="42" rx="5" style="fill:var(--surface-2)"/>
+            <text x="256" y="144" text-anchor="middle">Auth</text>
+            <text class="t-sub" x="256" y="158" text-anchor="middle">verify + mint JWT</text>
+            <text class="t-sub" x="366" y="136">reads user_id + tenant_id from the token</text>
+            <text class="t-sub" x="366" y="150">tenant-context middleware — SET LOCAL app.user_id · app.tenant_id</text>
+            <text class="t-sub" x="366" y="164">routes to a Platform Service · handles SSE streams</text>
+
+            <path class="edge edge--accent" d="M400 176 V186" marker-end="url(#mk-accent)"/>
+            <text class="t-edge" x="406" y="184">every request: tenant context already set</text>
+
+            <!-- ===== PLATFORM ===== -->
+            <rect class="container" x="20" y="188" width="620" height="344" rx="10"/>
+            <text class="t-lane" x="34" y="208">PLATFORM SERVICES</text>
+
+            <!-- lane BUILD -->
+            <rect class="lane" x="30" y="216" width="600" height="58" rx="6"/>
+            <text class="t-lane" x="40" y="230">BUILD</text>
+            <rect class="box" x="40" y="234" width="180" height="34" rx="5"/><text x="130" y="255" text-anchor="middle">MCP Registry</text>
+            <rect class="box box-pause" x="232" y="234" width="180" height="34" rx="5"/><rect class="pausebar" x="232" y="234" width="3" height="34"/><text x="326" y="255" text-anchor="middle">Build Orchestrator</text>
+            <rect class="box" x="424" y="234" width="180" height="34" rx="5"/><text x="514" y="255" text-anchor="middle">Scoring Engine</text>
+
+            <!-- lane RUN -->
+            <rect class="lane" x="30" y="286" width="600" height="58" rx="6"/>
+            <text class="t-lane" x="40" y="300">RUN</text>
+            <rect class="box" x="40" y="304" width="180" height="34" rx="5"/><text x="130" y="325" text-anchor="middle">Agent Config Store</text>
+            <rect class="box" x="232" y="304" width="180" height="34" rx="5"/><text x="326" y="325" text-anchor="middle">Agent Runtime</text>
+            <rect class="box box-pause" x="424" y="304" width="180" height="34" rx="5"/><rect class="pausebar" x="424" y="304" width="3" height="34"/><text x="518" y="325" text-anchor="middle">Approval Gate</text>
+
+            <!-- lane PUBLISH -->
+            <rect class="lane" x="30" y="356" width="600" height="58" rx="6"/>
+            <text class="t-lane" x="40" y="370">PUBLISH</text>
+            <rect class="box" x="40" y="374" width="180" height="34" rx="5"/><text x="130" y="395" text-anchor="middle">Sanitizer</text>
+            <rect class="box box-pause" x="232" y="374" width="180" height="34" rx="5" style="fill:var(--accent-soft)"/><rect class="pausebar" x="232" y="374" width="3" height="34"/><text x="326" y="395" text-anchor="middle">Admin Review</text>
+            <rect class="box" x="424" y="374" width="180" height="34" rx="5" style="fill:var(--accent-soft)"/><text x="514" y="395" text-anchor="middle">Marketplace</text>
+            <text class="t-edge" x="232" y="424">shaded = cross-tenant · table carries no RLS policy</text>
+
+            <text class="t-sub" x="40" y="440" style="font-size:10px">INSTALL · clone published design → new tenant, fresh credentials, original untouched</text>
+
+            <!-- internal edges -->
+            <path class="edge" d="M220 251 H232" marker-end="url(#mk)"/>
+            <path class="edge" d="M412 251 H424" marker-end="url(#mk)"/>
+            <path class="edge edge--accent" d="M300 268 C260 288 180 288 135 302" marker-end="url(#mk-accent)"/>
+            <text class="t-edge" x="150" y="288">writes config</text>
+            <path class="edge" d="M220 321 H232" marker-end="url(#mk)"/><text class="t-edge" x="226" y="315">reads</text>
+            <path class="edge edge--human" d="M412 321 H424" marker-end="url(#mk-human)"/>
+            <path class="edge" d="M220 391 H232" marker-end="url(#mk)"/>
+            <path class="edge" d="M412 391 H424" marker-end="url(#mk)"/>
+            <path class="edge edge--accent" d="M130 338 V374" marker-end="url(#mk-accent)"/>
+            <text class="t-edge" x="134" y="358">design only</text>
+
+            <!-- ===== EXTERNAL MCP ===== -->
+            <rect class="box" x="660" y="188" width="260" height="96" rx="8"/>
+            <text x="790" y="222" text-anchor="middle">External MCP Servers</text>
+            <text class="t-sub" x="790" y="240" text-anchor="middle">any HTTP MCP endpoint</text>
+            <text class="t-sub" x="790" y="256" text-anchor="middle">tools tagged read / write / destructive</text>
+
+            <path class="edge edge--accent" d="M640 244 H660" marker-end="url(#mk-accent)"/>
+            <text class="t-edge" x="576" y="238">introspect tools</text>
+            <path class="edge edge--human" d="M604 321 C630 321 640 300 660 285" marker-end="url(#mk-human)"/>
+            <text class="t-edge" x="600" y="352">tool calls · writes wait for approval</text>
+
+            <!-- ===== VAULT + KMS ===== -->
+            <rect class="box" x="660" y="332" width="150" height="56" rx="8"/>
+            <text x="735" y="356" text-anchor="middle">Credential Vault</text>
+            <text class="t-sub" x="735" y="372" text-anchor="middle">ciphertext only</text>
+            <rect class="box" x="828" y="332" width="92" height="56" rx="8"/>
+            <text x="874" y="364" text-anchor="middle">KMS</text>
+            <path class="edge" d="M810 360 H828" marker-end="url(#mk)"/><text class="t-edge" x="819" y="352">wrap key</text>
+            <path class="edge edge--accent edge--dash" d="M604 328 C630 336 640 344 660 348" marker-end="url(#mk-accent)"/>
+            <text class="t-edge" x="612" y="332">fetch → use → drop</text>
+            <path class="edge edge--dash" d="M700 388 V556" marker-end="url(#mk)"/>
+            <text class="t-edge" x="704" y="470">stores ciphertext</text>
+
+            <!-- ===== POSTGRES ===== -->
+            <path class="edge edge--accent" d="M330 532 V556" marker-end="url(#mk-accent)"/>
+            <text class="t-edge" x="336" y="548">every query scoped by RLS</text>
+
+            <rect class="box" x="20" y="558" width="900" height="118" rx="10"/>
+            <text class="t-lane" x="34" y="580" style="fill:var(--ink)">POSTGRESQL · ROW-LEVEL SECURITY ON tenant_id</text>
+
+            <rect class="chip" x="34" y="592" width="150" height="26" rx="4"/><text class="t-chip" x="109" y="609" text-anchor="middle">tenants · users</text>
+            <rect class="chip" x="194" y="592" width="170" height="26" rx="4"/><text class="t-chip" x="279" y="609" text-anchor="middle">mcp_servers · tools</text>
+            <rect class="chip" x="374" y="592" width="180" height="26" rx="4"/><text class="t-chip" x="464" y="609" text-anchor="middle">connections · ciphertext</text>
+            <rect class="chip" x="564" y="592" width="190" height="26" rx="4"/><text class="t-chip" x="659" y="609" text-anchor="middle">agent_configs · versioned</text>
+            <rect class="chip" x="764" y="592" width="146" height="26" rx="4"/><text class="t-chip" x="837" y="609" text-anchor="middle">runs · approvals</text>
+
+            <rect class="chip" x="34" y="628" width="220" height="26" rx="4" style="fill:var(--accent-soft);stroke:var(--accent)"/><text class="t-chip" x="144" y="645" text-anchor="middle">marketplace · reviews — no RLS</text>
+            <rect class="chip chip--accent" x="596" y="628" width="314" height="26" rx="4"/><text class="t-chip" x="753" y="645" text-anchor="middle" style="fill:var(--ink)">LangGraph checkpointer · durable graph state</text>
+
+            <path class="edge edge--accent edge--dash" d="M470 532 C520 560 560 600 596 636" marker-end="url(#mk-accent)"/>
+            <text class="t-edge" x="500" y="556">checkpoint / resume</text>
+          </svg>
+        </div>
+        <figcaption>
+          <b>Isolation is structural.</b> The App Server mints a token carrying <code>user_id</code> + <code>tenant_id</code>, and its middleware turns those into Postgres session variables on every request; row-level security then filters every table by owner and tenant. Delete the application-level filter and nothing changes. The one exception, shaded, is the <code>marketplace</code> and review tables — they carry no RLS policy, so any authenticated user sees them, but only sanitized listings, and an admin guards what gets in.
+          <b>Agents are data.</b> The Build Orchestrator writes a versioned document into <code>agent_configs</code>; one runtime assembles and runs it.
+          <b>Pauses are durable.</b> The Build Orchestrator, the Approval Gate and Admin Review all persist to the LangGraph checkpointer, so a wait survives restarts.
+          <b>Credentials stay sealed.</b> The vault holds ciphertext wrapped by the KMS; the runtime fetches a token, uses it, and drops it — it never enters a config, prompt, log or checkpoint.
+        </figcaption>
+      </figure>
+      <div class="legend">
+        <i><span class="sw"></span> control / data flow</i>
+        <i><span class="sw acc"></span> platform-internal flow</i>
+        <i><span class="sw hum"></span> human-in-the-loop</i>
+        <i><span class="sw dash"></span> transient / just-in-time</i>
+        <i><span class="sq"></span> pauses &amp; resumes from checkpoint</i>
+        <i><span class="sq xt"></span> cross-tenant · no row-level security</i>
+      </div>
+    </div>
+  </section>
+
+  <section id="flow" class="wrap">
+    <h2><span class="tick">/</span>The six-step flow</h2>
+    <p class="lede">The demo walks this path end to end without cuts. Numbered because it is a genuine sequence — each step depends on the one before it.</p>
+    <ol class="flow">
+      <li>
+        <div>
+          <h3>Register a tool server</h3>
+          <p>Paste an MCP server address and save. The platform connects, asks the server what tools it has, and stores the answer with each tool marked <code>read</code>, <code>write</code>, or <code>destructive</code>. No tool names are typed by hand.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Connect to it</h3>
+          <p>Paste your token once. It is encrypted on arrival. You never see it again, and nothing in the system reads it that does not strictly need it. Every agent you build reuses this connection.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Describe an agent</h3>
+          <p>Type the goal in plain English. The platform proposes servers from the registry — you tick the ones you want — then <span class="hit">checks each connection and stops if one is missing</span>. It builds, deploys, and shows the name, description, capabilities and score. Those two stops are LangGraph interrupts and survive a server restart.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Test it</h3>
+          <p>The agent appears in My Agents as a card. Its page has the graph, tools, scores, run history and API endpoint. A playground chat runs it — and when it tries something risky it <span class="hit">stops and asks you to Approve or Reject</span> right in the chat.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Publish it</h3>
+          <p>Publish to Marketplace does not go live — it goes to an admin, who sees what the agent does and how it scored, and either approves it or sends it back with notes. <span class="hit">That review may sit for three days</span> across two deploys and a weekend; answering resumes the run.</p>
+        </div>
+      </li>
+      <li>
+        <div>
+          <h3>Someone else installs it</h3>
+          <p>A person in a different company opens the Marketplace, clicks Add to my workspace, and gets their own copy. They supply their own credentials. They never touch the original, and the original owner's tokens never move.</p>
+        </div>
+      </li>
+    </ol>
+  </section>
+
+  <section id="rules" class="wrap">
+    <h2><span class="tick">/</span>Rules → mechanism</h2>
+    <p class="lede">How each of the eight rules is satisfied — and where in the system it is enforced.</p>
+    <div class="tablewrap">
+      <table>
+        <thead>
+          <tr><th>Rule</th><th>Where it lives</th><th>Mechanism</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="rule"><b>Rule 1</b>Configuration, not code</td>
+            <td class="where">Config Store + Runtime</td>
+            <td class="mech">Build emits a <b>versioned config document</b>; one runtime interprets it. No code generation, no per-agent Python. This is the decision everything else hangs off — versioning, safety, and portability into another workspace.</td>
+          </tr>
+          <tr>
+            <td class="rule"><b>Rule 2</b>Tenant isolation</td>
+            <td class="where">Postgres RLS + tenant-context middleware</td>
+            <td class="mech">Auth stamps <code>tenant_id</code> into the JWT; middleware sets it as a DB session variable per request; <b>RLS policies filter every table</b>. Remove the app-level filter and isolation still holds. The <code>marketplace</code> and review tables carry no RLS policy — the one deliberate exception, visible to any authenticated user but sanitized.</td>
+          </tr>
+          <tr>
+            <td class="rule"><b>Rule 3</b>Credentials vanish</td>
+            <td class="where">Credential Vault + KMS</td>
+            <td class="mech">Envelope-encrypted on write, <b>ciphertext-only column</b>. The runtime does fetch → use → drop. A token never lands in a config, a prompt, a log, or a saved conversation.</td>
+          </tr>
+          <tr>
+            <td class="rule"><b>Rule 4</b>Risky actions ask first</td>
+            <td class="where">Approval Gate in the runtime</td>
+            <td class="mech">The gate keys off the tool's <code>read</code>/<code>write</code>/<code>destructive</code> tag from the registry — <b>not the agent's prompt</b>. Any write or delete pauses as an interrupt until a person approves.</td>
+          </tr>
+          <tr>
+            <td class="rule"><b>Rule 5</b>Publishing strips the company</td>
+            <td class="where">Sanitizer</td>
+            <td class="mech">What reaches the Marketplace is the <b>design only</b> — what it does and which kinds of access it needs. Owner, credentials and internal text are dropped. Tested against planted confidential material.</td>
+          </tr>
+          <tr>
+            <td class="rule"><b>Rule 6</b>Scores must mean something</td>
+            <td class="where">Scoring Engine</td>
+            <td class="mech"><b>Deterministic rubric</b> for effectiveness and safety — every number traceable to a rule, no model guessing. Publish is disabled below threshold and says why.</td>
+          </tr>
+          <tr>
+            <td class="rule"><b>Rule 7</b>Every agent gets an endpoint</td>
+            <td class="where">Gateway → Runtime</td>
+            <td class="mech">Per-agent URL plus a downloadable Postman collection on the agent page. A token from another company gets <b>404, not 403</b> — under RLS the row is invisible, so the platform cannot even confirm the agent exists.</td>
+          </tr>
+          <tr>
+            <td class="rule"><b>Rule 8</b>One real multi-agent system</td>
+            <td class="where">Config schema + Runtime</td>
+            <td class="mech">The config supports a <b>coordinator delegating to ≥2 specialists</b> with a human approval step between. The demo agent is built through the platform, not hand-written.</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section id="durable">
+    <div class="wrap">
+      <h2><span class="tick">/</span>Surviving restarts &amp; long waits</h2>
+      <p class="lede">Grading checks 5 and 6: killing the server mid-build must resume correctly, and an approval left pending overnight must still resume the next day. Both are the same mechanism.</p>
+    </div>
+    <div class="bleed">
+      <figure>
+        <div class="figframe">
+          <svg class="dgm" viewBox="0 0 900 300" role="img" aria-label="A single timeline of a build and publish: the graph pauses at server selection, at the connection check, and at admin review; a server restart happens between the first two pauses; every pause writes state to the LangGraph checkpointer in Postgres, and the final step rehydrates from it to resume after a three-day wait.">
+            <defs>
+              <marker id="mk2" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--line)"/></marker>
+              <marker id="mk2a" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse"><path d="M0 0 L10 5 L0 10 z" fill="var(--accent)"/></marker>
+            </defs>
+
+            <!-- timeline -->
+            <path class="edge" d="M40 96 H862" marker-end="url(#mk2)"/>
+
+            <!-- nodes -->
+            <g text-anchor="middle">
+              <circle cx="80" cy="96" r="5" fill="var(--line)"/>
+              <text class="t-sub" x="80" y="76" style="font-size:10px">build starts</text>
+
+              <circle cx="270" cy="96" r="6" fill="var(--human)"/>
+              <text x="270" y="72" style="font-size:10px; fill:var(--human)">propose servers</text>
+              <text class="t-sub" x="270" y="123" style="font-size:9px">pause 1</text>
+
+              <circle cx="470" cy="96" r="6" fill="var(--human)"/>
+              <text x="470" y="72" style="font-size:10px; fill:var(--human)">connection check</text>
+              <text class="t-sub" x="470" y="123" style="font-size:9px">pause 2</text>
+
+              <circle cx="660" cy="96" r="6" fill="var(--human)"/>
+              <text x="660" y="72" style="font-size:10px; fill:var(--human)">publish → admin review</text>
+              <text class="t-sub" x="660" y="123" style="font-size:9px">pause 3</text>
+
+              <circle cx="840" cy="96" r="5" fill="var(--accent)"/>
+              <text x="835" y="72" style="font-size:10px; fill:var(--accent)">approved · resumes</text>
+            </g>
+
+            <!-- restart bolt -->
+            <path class="bolt" d="M360 60 l-14 26 l12 4 l-12 26 l20 -20 l-11 -4 z"/>
+            <text class="t-sub" x="378" y="70" style="font-size:9.5px; fill:var(--human)">server restart</text>
+
+            <!-- 3 day bracket -->
+            <path class="edge edge--dash" d="M666 44 H820 M666 44 V52 M820 44 V52"/>
+            <text class="t-sub" x="743" y="36" text-anchor="middle" style="font-size:9.5px">3 days · 2 deploys · a weekend</text>
+
+            <!-- checkpointer -->
+            <rect class="chip--accent" x="200" y="210" width="500" height="40" rx="6" stroke-width="1.2"/>
+            <text x="450" y="234" text-anchor="middle" style="font-size:11px; fill:var(--ink)">LangGraph checkpointer  ·  Postgres</text>
+
+            <path class="edge edge--dash" d="M270 108 V210" marker-end="url(#mk2)"/>
+            <path class="edge edge--dash" d="M470 108 V210" marker-end="url(#mk2)"/>
+            <path class="edge edge--dash" d="M660 108 V210" marker-end="url(#mk2)"/>
+            <path class="edge edge--accent edge--dash" d="M700 224 C780 224 840 180 840 108" marker-end="url(#mk2a)"/>
+            <text class="t-edge" x="775" y="188" style="font-size:9.5px">rehydrate</text>
+          </svg>
+        </div>
+        <figcaption>
+          The two build interrupts and the admin-review interrupt are <b>one mechanism</b>: the graph writes its full state to the checkpointer and stops. A restart, a redeploy, or a three-day wait for an admin changes nothing — on the next input the graph rehydrates from its last checkpoint and continues from the exact node it stopped at. Nothing about the pause lives in server memory.
+        </figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section id="open" class="wrap">
+    <h2><span class="tick">/</span>Decisions still open</h2>
+    <p class="lede">The parts that need a design pass before implementation starts.</p>
+    <div class="qgrid">
+      <div>
+        <h3>The agent config document schema</h3>
+        <p>The central design problem. It must carry identity, graph shape (nodes, edges, sub-agents), tool references <em>by capability, not by credential</em>, interrupt points, prompt templates, the inputs its scores are computed from, and a version — and stay portable into another tenant.</p>
+      </div>
+      <div>
+        <h3>The build graph's interrupt points</h3>
+        <p>Exactly where the orchestrator pauses (server selection, missing connection), what state each checkpoint carries, and how a resumed run reconciles with a registry or connection that changed while it was paused.</p>
+      </div>
+      <div>
+        <h3>Isolation mechanics</h3>
+        <p>The RLS policy shape, how the middleware sets and clears the session variable per request, and what that means for connection pooling and the background runtime workers.</p>
+      </div>
+      <div>
+        <h3>The scoring rubric</h3>
+        <p>The actual formulas for effectiveness and safety, the thresholds that block publication, and how each contributing factor is surfaced so a number can always be explained.</p>
+      </div>
+    </div>
+  </section>
+
+  <footer class="wrap">
+    <span>Data Sense · Agent Builder Capstone</span>
+    <span>High-level architecture · working draft</span>
+    <span>Match the behaviour, not the pixels</span>
+  </footer>
+</main>

@@ -1,0 +1,46 @@
+{
+  "name": "anurag-backend",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "MCP Registry backend — real MCP discovery, tool classification, envelope-encrypted connections. Node/TypeScript, matching WorkingServer and AnuragFrontend.",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "tsx --env-file=.env src/index.ts",
+    "server:start": "bash scripts/start.sh",
+    "server:stop": "bash scripts/stop.sh",
+    "server:restart": "npm run server:stop && npm run server:start",
+    "build": "tsc -p tsconfig.json",
+    "start": "node --env-file=.env dist/index.js",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint src --ext .ts"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.125.0",
+    "@langchain/anthropic": "^1.5.10",
+    "@langchain/core": "^1.2.11",
+    "@langchain/langgraph": "^1.4.15",
+    "@langchain/langgraph-checkpoint-postgres": "^1.0.5",
+    "embedded-postgres": "^18.4.0-beta.17",
+    "express": "^4.21.2",
+    "langchain": "^1.5.11",
+    "pg": "^8.23.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.10.2",
+    "@types/pg": "^8.23.1",
+    "@typescript-eslint/eslint-plugin": "^8.15.0",
+    "@typescript-eslint/parser": "^8.15.0",
+    "eslint": "^8.57.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "overrides": {
+    "qs": "^6.16.0"
+  }
+}
