@@ -547,8 +547,8 @@
     <p class="lede">The parts that need a design pass before implementation starts.</p>
     <div class="qgrid">
       <div>
-        <h3>The agent config document schema</h3>
-        <p>The central design problem. It must carry identity, graph shape (nodes, edges, sub-agents), tool references <em>by capability, not by credential</em>, interrupt points, prompt templates, the inputs its scores are computed from, and a version — and stay portable into another tenant.</p>
+        <h3>The agent config document schema <span style="font-size:11px; font-weight:600; color:var(--accent)">— resolved</span></h3>
+        <p>Carries identity, graph shape (<code>sequential</code> or <code>coordinator_specialist</code> with named sub-agents), tool references <em>by capability, not by credential</em>, interrupt points, prompt templates, the inputs its scores are computed from, and a version — portable into another tenant. The coordinator/specialist shape is built and runs for real: a per-role tool-selection pass, and any risky tool is reassigned to the coordinator in code regardless of which role picked it, so only the coordinator ever holds the approval gate.</p>
       </div>
       <div>
         <h3>The build graph's interrupt points</h3>
@@ -559,8 +559,8 @@
         <p>The RLS policy shape, how the middleware sets and clears the session variable per request, and what that means for connection pooling and the background runtime workers.</p>
       </div>
       <div>
-        <h3>The scoring rubric</h3>
-        <p>The actual formulas for effectiveness and safety, the thresholds that block publication, and how each contributing factor is surfaced so a number can always be explained.</p>
+        <h3>The scoring rubric <span style="font-size:11px; font-weight:600; color:var(--accent)">— resolved</span></h3>
+        <p>A deterministic formula for effectiveness and safety (tool coverage, prompt quality, model tier, graph complexity, schedule · write/destructive gating, credential hygiene, read-only ratio), with a stored breakdown so every point traces to a rule. Publish still enforces the threshold (&lt;60 / &lt;70 blocks it) — but scoring itself is no longer publish-only: it also runs the moment any test run completes, so an unpublished agent shows a real number instead of staying blank.</p>
       </div>
     </div>
   </section>

@@ -14,6 +14,8 @@ interface PendingApproval {
 
 interface Props {
   agentVersionId: string;
+  /** Fires once a run reaches 'completed' — e.g. so a host page can refetch run history/score, both of which change server-side the moment a run finishes (services/runner.ts). */
+  onRunCompleted?: () => void;
 }
 
 /**
@@ -22,7 +24,7 @@ interface Props {
  * within one paused-then-resumed thread). Shown as a running transcript for
  * readability, but each exchange is independent.
  */
-export default function AgentPlayground({ agentVersionId }: Props) {
+export default function AgentPlayground({ agentVersionId, onRunCompleted }: Props) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [pending, setPending] = useState<PendingApproval | null>(null);
@@ -33,6 +35,7 @@ export default function AgentPlayground({ agentVersionId }: Props) {
       setMessages((m) => [...m, { role: "assistant", text: outcome.output }]);
       setPending(null);
       setDecisions({});
+      onRunCompleted?.();
     } else {
       setPending({ threadId, hitlRequest: outcome.hitlRequest });
       setDecisions(Object.fromEntries(outcome.hitlRequest.actionRequests.map((_, i) => [i, "approve"])));

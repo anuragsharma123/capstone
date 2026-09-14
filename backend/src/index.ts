@@ -6,6 +6,7 @@ import { router as agentsRouter } from "./routes/agents.js";
 import { router as runsRouter } from "./routes/runs.js";
 import { router as publishRouter } from "./routes/publish.js";
 import { router as webhooksRouter } from "./routes/webhooks.js";
+import { router as postmanRouter } from "./routes/postman.js";
 import { startHealthChecker } from "./health.js";
 import { setupCheckpointer } from "./checkpointer.js";
 
@@ -49,6 +50,7 @@ async function main(): Promise<void> {
   app.use(runsRouter);
   app.use(publishRouter);
   app.use(webhooksRouter);
+  app.use(postmanRouter);
 
   app.get("/healthz", (_req, res) => {
     res.json({ status: "ok" });
@@ -71,6 +73,9 @@ async function main(): Promise<void> {
     console.error(`  GET    /api/marketplace                 list published (sanitized) agents`);
     console.error(`  POST   /api/webhooks/:versionId         trigger a webhook-configured agent (verified, async)`);
     console.error(`  GET    /api/agents/runs/pending          every run still waiting on a human approval`);
+    console.error(`  GET    /api/agents                       list every agent (My Agents)`);
+    console.error(`  GET    /api/agents/:agentId              one agent's config, score, and run history`);
+    console.error(`  GET    /api/agents/:versionId/postman    download a Postman collection for this agent's API`);
     console.error(`health check: http://localhost:${config.PORT}/healthz`);
   });
 

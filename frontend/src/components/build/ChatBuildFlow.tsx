@@ -188,7 +188,7 @@ export default function ChatBuildFlow({ builder }: Props) {
           }
           return (
             <div key={i} className="chat-bubble assistant widget-bubble">
-              <AgentCard config={turn.config} />
+              <AgentCard config={turn.config} agentId={turn.agentId} />
             </div>
           );
         })}

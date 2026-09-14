@@ -3,6 +3,14 @@ import type { AgentConfigDoc, AgentConfigTool } from "../../lib/api";
 
 interface Props {
   config: AgentConfigDoc;
+  /** Real values once known (My Agents / Agent detail) — omitted right after a build, which is always `draft` with no score yet. */
+  status?: string;
+  effectivenessScore?: number | null;
+  safetyScore?: number | null;
+  /** Needed to deep-link "Go to this agent" straight to its own detail page rather than the generic My Agents list. */
+  agentId?: string;
+  /** Hide the "open playground / go to this agent" footer — redundant once the card is already embedded in the Agent detail page. */
+  showActions?: boolean;
 }
 
 function serverSlug(name: string): string {
@@ -40,12 +48,12 @@ function toolChip(t: AgentConfigTool) {
  * Score stays "not tested yet": it only exists after publish
  * (services/scoring.ts), never fabricated as a placeholder number here.
  */
-export default function AgentCard({ config }: Props) {
+export default function AgentCard({ config, status = "draft", effectivenessScore = null, safetyScore = null, agentId, showActions = true }: Props) {
   return (
     <div className="agent-card">
       <div className="agent-card-head">
         <div className="agent-card-name">{config.name}</div>
-        <span className="status-chip draft">draft</span>
+        <span className={`status-chip ${status}`}>{status.replace("_", " ")}</span>
       </div>
       <p className="agent-description">{config.description}</p>
 
@@ -93,18 +101,24 @@ export default function AgentCard({ config }: Props) {
         </div>
         <div className="agent-fact">
           <dt>Score</dt>
-          <dd>not tested yet</dd>
+          <dd>
+            {effectivenessScore !== null && safetyScore !== null
+              ? `Effectiveness ${effectivenessScore}/100 · Safety ${safetyScore}/100`
+              : "C (Not tested yet)"}
+          </dd>
         </div>
       </dl>
 
-      <div className="agent-card-actions">
-        <a href="#playground-panel" className="connect-link">
-          Open the playground
-        </a>
-        <Link to="/agents" className="connect-link">
-          Go to My Agents
-        </Link>
-      </div>
+      {showActions && (
+        <div className="agent-card-actions">
+          <a href="#playground-panel" className="connect-link">
+            Open the playground
+          </a>
+          <Link to={agentId ? `/agents/${agentId}` : "/agents"} className="connect-link">
+            Go to My Agent
+          </Link>
+        </div>
+      )}
     </div>
   );
 }

@@ -156,6 +156,10 @@ section.panel{
 .status-chip.active{color:var(--success); background:var(--success-bg)}
 .status-chip.expired{color:var(--danger); background:var(--danger-bg)}
 .status-chip.draft{color:var(--muted); background:var(--surface-2)}
+.status-chip.in_review{color:var(--accent); background:var(--accent-soft)}
+.status-chip.published,.status-chip.approved{color:var(--success); background:var(--success-bg)}
+.status-chip.changes_requested,.status-chip.rejected{color:var(--danger); background:var(--danger-bg)}
+.status-chip.pending{color:var(--muted); background:var(--surface-2)}
 .connect-form{display:flex; flex-wrap:wrap; gap:6px}
 .connect-error{flex-basis:100%; margin:2px 0 0; font-size:11.5px; color:var(--danger)}
 .connect-form input{
@@ -355,6 +359,64 @@ form.build-form button{align-self:flex-start}
 }
 .agent-fact-role-empty{font-size:12px; color:var(--faint); font-style:italic}
 .agent-card-actions{display:flex; gap:16px; margin-top:16px}
+
+.agent-grid{
+  display:grid; grid-template-columns:repeat(auto-fill, minmax(260px, 1fr)); gap:14px;
+}
+.agent-list-card{
+  display:flex; flex-direction:column; gap:10px;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius);
+  box-shadow:var(--shadow-sm); padding:16px 18px; text-decoration:none; color:inherit;
+  transition:border-color .12s ease, box-shadow .12s ease;
+}
+.agent-list-card:hover{border-color:var(--accent-border); box-shadow:0 2px 8px rgba(20,30,40,.08)}
+.agent-list-card-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.agent-list-card-name{font-size:15px; font-weight:600; color:var(--ink)}
+.agent-list-card-desc{margin:0; font-size:13px; color:var(--muted); line-height:1.45}
+.agent-list-card-tags{display:flex; flex-wrap:wrap; gap:6px}
+.tag-chip{
+  font-family:var(--f-mono); font-size:11px; color:var(--muted); background:var(--surface-2);
+  border:1px solid var(--border); border-radius:20px; padding:2px 9px;
+}
+.tag-chip.accent{color:var(--accent); background:var(--accent-soft); border-color:var(--accent-border)}
+.agent-list-card-score{display:flex; align-items:baseline; gap:8px; margin-top:2px}
+.agent-list-card-score .score-label{font-size:11px; font-weight:600; color:var(--faint); text-transform:uppercase; letter-spacing:.03em}
+.agent-list-card-score .score-number{font-size:20px; font-weight:700; color:var(--ink)}
+.agent-list-card-score .score-grade{
+  font-family:var(--f-mono); font-size:12px; font-weight:600; color:var(--accent);
+  background:var(--accent-soft); border:1px solid var(--accent-border); border-radius:6px; padding:1px 7px;
+}
+.agent-list-card-meta{font-size:12px; color:var(--faint); font-family:var(--f-mono)}
+
+.api-snippet{
+  font-family:var(--f-mono); font-size:12px; color:var(--ink); background:var(--surface-2);
+  border:1px solid var(--border); border-radius:8px; padding:12px 14px; overflow-x:auto;
+  white-space:pre; margin:0;
+}
+
+.review-list{display:flex; flex-direction:column; gap:14px}
+.review-card{
+  display:flex; flex-direction:column; gap:10px;
+  background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:16px 18px;
+}
+.review-card-head{display:flex; align-items:center; justify-content:space-between; gap:10px}
+.review-card-name{font-size:15px; font-weight:600; color:var(--ink)}
+.review-card-scores{display:flex; flex-wrap:wrap; gap:14px; font-size:12.5px; color:var(--ink)}
+.review-card-actions{display:flex; flex-direction:column; gap:8px; margin-top:2px}
+.review-notes{
+  border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:inherit;
+  font-size:13px; color:var(--ink); background:var(--surface-2); resize:vertical; min-height:44px;
+}
+.review-card-buttons{display:flex; gap:10px; flex-wrap:wrap}
+.review-card-buttons button{
+  height:32px; padding:0 14px; border-radius:7px; border:1px solid var(--border);
+  background:var(--surface); color:var(--ink); font-weight:600; font-size:12.5px; cursor:pointer;
+}
+.review-card-buttons button:hover{border-color:var(--accent-border)}
+.review-card-buttons button:disabled{opacity:.55; cursor:default}
+.review-card-buttons button.primary{border-color:var(--accent); background:var(--accent); color:var(--accent-ink)}
+.review-card-buttons button.primary:hover{background:#0b6a73}
+.review-card-buttons button.danger{border-color:var(--danger-border); color:var(--danger); background:var(--danger-bg)}
 
 .build-widget{display:flex; flex-direction:column; gap:4px}
 .chat-bubble.widget-bubble{max-width:92%; background:var(--surface); border:1px solid var(--border); padding:12px 14px}

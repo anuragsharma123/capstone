@@ -20,11 +20,19 @@ export interface SanitizedManifest {
 }
 
 export function sanitize(config: AgentConfigDoc): SanitizedManifest {
+  // Rule 8: a coordinator_specialist agent's real capability surface includes
+  // every specialist's tools too, not just the coordinator's own — omitting
+  // them would understate what the agent can actually do to whoever reviews
+  // or installs it.
+  const allTools =
+    config.graph.type === "coordinator_specialist"
+      ? [...config.tools, ...config.graph.specialists.flatMap((s) => s.tools)]
+      : config.tools;
   return {
     name: config.name,
     description: config.description,
     model: config.model,
     graphType: config.graph.type,
-    capabilities: config.tools.map((t) => ({ toolName: t.tool_name, sensitivity: t.sensitivity })),
+    capabilities: allTools.map((t) => ({ toolName: t.tool_name, sensitivity: t.sensitivity })),
   };
 }

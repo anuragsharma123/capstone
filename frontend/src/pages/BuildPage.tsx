@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { Link } from "react-router-dom";
 import { useAgentBuilder } from "../hooks/useAgentBuilder";
 import ChatBuildFlow from "../components/build/ChatBuildFlow";
 import FormBuildFlow from "../components/build/FormBuildFlow";
@@ -45,6 +46,9 @@ export default function BuildPage() {
         <section className="panel" id="playground-panel">
           <div className="panel-head">
             <h3>Playground</h3>
+            <Link to={`/agents/${builder.phase.agentId}`} className="connect-link">
+              Go to My Agent
+            </Link>
           </div>
           <div className="panel-body">
             <AgentPlayground agentVersionId={builder.phase.agentVersionId} />

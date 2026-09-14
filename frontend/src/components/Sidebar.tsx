@@ -1,5 +1,5 @@
 import { NavLink } from "react-router-dom";
-import { RegistryIcon, ConnectionsIcon, AgentsIcon, BuildIcon, MarketplaceIcon } from "./icons";
+import { RegistryIcon, ConnectionsIcon, AgentsIcon, BuildIcon, ReviewIcon, MarketplaceIcon } from "./icons";
 
 interface NavEntry {
   to: string;
@@ -11,8 +11,9 @@ interface NavEntry {
 const NAV_ITEMS: NavEntry[] = [
   { to: "/registry", label: "MCP Registry", icon: RegistryIcon },
   { to: "/connections", label: "Connections", icon: ConnectionsIcon },
-  { to: "/agents", label: "My Agents", icon: AgentsIcon, soon: true },
+  { to: "/agents", label: "My Agents", icon: AgentsIcon },
   { to: "/build", label: "Build", icon: BuildIcon },
+  { to: "/review", label: "Admin Review", icon: ReviewIcon },
   { to: "/marketplace", label: "Marketplace", icon: MarketplaceIcon, soon: true },
 ];
 

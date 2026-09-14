@@ -517,6 +517,8 @@
             <tr><td class="col">status</td><td class="typ">text</td><td class="note"><b>check in</b> <code>('running','interrupted','completed','failed')</code></td></tr>
             <tr><td class="col">interrupt_kind</td><td class="typ">text</td><td class="note"><code>('select_servers','add_connection','await_approval')</code></td></tr>
             <tr><td class="col">interrupt_payload</td><td class="typ">jsonb</td><td class="note">what to show the human at the pause</td></tr>
+            <tr><td class="col">result</td><td class="typ">jsonb</td><td class="note"><code>{output}</code> — what a <em>completed</em> run actually produced. Without this, a run nobody is watching live (a webhook trigger, no browser tab open) would finish with no audit trail at all</td></tr>
+            <tr><td class="col">trigger_message</td><td class="typ">text</td><td class="note">what was asked — the typed Playground message, or the webhook's translated payload. Powers the My Agents run-history list, which otherwise shows only what an agent answered, never what it was asked</td></tr>
             <tr><td class="col">updated_at</td><td class="typ">timestamptz</td><td class="note">touched on every state transition</td></tr>
           </tbody>
         </table>

@@ -144,7 +144,8 @@
       <li><b>Marketplace + admin-review tables have no RLS — the one deliberate exception.</b> <span class="why">Cross-tenant by design; rows are sanitized on entry; an admin guards the door.</span></li>
       <li><b>Credentials: envelope encryption (per-connection key, KMS-wrapped).</b> <span class="why">For the capstone the "KMS" is one master key in an env var. A single Fernet key would also pass — this is a strengthening, not a requirement.</span></li>
       <li><b>Tools are tagged <code>read</code>/<code>write</code>/<code>destructive</code> at registration by a deterministic classifier</b> (fail-safe to <code>write</code>). <span class="why">The approval gate reads that tag from the DB — never the prompt.</span></li>
-      <li><b>Scores are a pure function of the config — no LLM.</b> <span class="why">Every point traceable; publish blocked below threshold; this is how an unguarded write tool can't be published.</span></li>
+      <li><b>Scores are a pure function of the config — no LLM.</b> <span class="why">Every point traceable; publish blocked below threshold; this is how an unguarded write tool can't be published. Runs at two moments now, not one: right after any completed test run (so a tested-but-unpublished agent shows a real number), and again at Publish, which is still the one that enforces the gate.</span></li>
+      <li><b>Rule 8's multi-agent system is real, not just a schema.</b> <span class="why">A coordinator can delegate to named specialists; any write/destructive tool is reassigned to the coordinator in code regardless of which role picked it, so a specialist can never bypass the approval gate. Verified end to end with two specialists.</span></li>
       <li><b>Auth is middleware inside the App Server, not a separate service.</b></li>
       <li><b>Two clients: the web app and the external API.</b> <span class="why">Marketplace and Admin Review are pages inside the web app; both require login.</span></li>
     </ul>
@@ -153,9 +154,8 @@
   <section class="wrap">
     <h2><span class="tick">/</span>Still open — needs a team call</h2>
     <ul class="pts">
-      <li><b>Agent config schema details</b> — how <code>coordinator_specialist</code> represents sub-agents, schedule/trigger fields, edit semantics.</li>
+      <li><b>Agent config schema details</b> — <code>coordinator_specialist</code>'s sub-agent representation is settled and built (see below); schedule/trigger fields and edit semantics are still open.</li>
       <li><b>Scoring thresholds</b> — the 60 / 70 cutoffs need checking against real agents.</li>
-      <li><b>The multi-agent demo agent (Rule 8)</b> — coordinator + ≥2 specialists + a human step, built through our own platform.</li>
       <li><b><code>agent_versions</code> table vs. <code>config</code> on <code>agents</code></b> — our data model uses a versions table; the earlier spec puts config on <code>agents</code>. Pick one.</li>
       <li><b>HITL for a non-interactive API caller</b> — how an approval pause surfaces to a script.</li>
     </ul>

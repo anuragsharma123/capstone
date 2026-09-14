@@ -1,6 +1,7 @@
 import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { startAgentBuild, resumeAgentBuild } from "../services/builder.js";
+import { listAgents, getAgentDetail } from "../services/agents.js";
 import { ServiceError } from "../services/registry.js";
 
 export const router = Router();
@@ -24,6 +25,22 @@ function handleServiceError(err: unknown, res: Response): void {
   console.error(err);
   res.status(500).json({ error: "Internal server error" });
 }
+
+router.get("/api/agents", async (_req: Request, res: Response) => {
+  try {
+    res.json(await listAgents());
+  } catch (err) {
+    handleServiceError(err, res);
+  }
+});
+
+router.get("/api/agents/:agentId", async (req: Request, res: Response) => {
+  try {
+    res.json(await getAgentDetail(req.params.agentId));
+  } catch (err) {
+    handleServiceError(err, res);
+  }
+});
 
 router.post("/api/agents/build", async (req: Request, res: Response) => {
   const parsed = BuildRequestSchema.safeParse(req.body);

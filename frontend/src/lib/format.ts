@@ -16,3 +16,12 @@ export function formatRelativeTime(iso: string): string {
   const days = Math.round(hours / 24);
   return `${days}d ago`;
 }
+
+/** Standard A/B/C/D/F banding over the effectiveness score — the same "C" already used as the untested placeholder, so a real score and "not yet scored" read as one consistent scale rather than two different conventions. */
+export function scoreGrade(effectiveness: number): string {
+  if (effectiveness >= 90) return "A";
+  if (effectiveness >= 80) return "B";
+  if (effectiveness >= 70) return "C";
+  if (effectiveness >= 60) return "D";
+  return "F";
+}

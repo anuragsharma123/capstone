@@ -81,7 +81,7 @@ export default function FormBuildFlow({ builder }: Props) {
             </button>
           </div>
           <div className="panel-body">
-            <AgentCard config={phase.config} />
+            <AgentCard config={phase.config} agentId={phase.agentId} />
           </div>
         </section>
       )}

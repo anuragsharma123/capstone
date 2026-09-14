@@ -71,7 +71,7 @@ export interface RegisterServerInput {
   discoveryValues?: Record<string, string>;
 }
 
-const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001").replace(/\/+$/, "");
+export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:8001").replace(/\/+$/, "");
 
 export class ApiError extends Error {}
 
@@ -246,4 +246,110 @@ export function runAgent(agentVersionId: string, message: string): Promise<RunSt
 
 export function resumeRun(threadId: string, decisions: Decision[]): Promise<RunOutcome> {
   return request<RunOutcome>(`/api/agents/runs/${threadId}/resume`, { method: "POST", body: JSON.stringify({ decisions }) });
+}
+
+// ---------- My Agents ----------
+
+export interface AgentSummary {
+  agentId: string;
+  agentVersionId: string;
+  name: string;
+  description: string;
+  status: string;
+  graphType: "sequential" | "coordinator_specialist";
+  specialistCount: number;
+  toolCount: number;
+  serverNames: string[];
+  triggerType: string;
+  triggerDetail: string | null;
+  effectivenessScore: number | null;
+  safetyScore: number | null;
+  createdAt: string;
+  runCount: number;
+  lastRunAt: string | null;
+}
+
+export interface RunSummary {
+  threadId: string;
+  status: string;
+  triggerMessage: string | null;
+  outputPreview: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface AgentDetail {
+  agentId: string;
+  agentVersionId: string;
+  config: AgentConfigDoc;
+  status: string;
+  effectivenessScore: number | null;
+  safetyScore: number | null;
+  scoreBreakdown: unknown | null;
+  createdAt: string;
+  runs: RunSummary[];
+}
+
+export function listAgents(): Promise<AgentSummary[]> {
+  return request<AgentSummary[]>("/api/agents");
+}
+
+export function getAgentDetail(agentId: string): Promise<AgentDetail> {
+  return request<AgentDetail>(`/api/agents/${agentId}`);
+}
+
+/** Rule 7 — every agent gets an endpoint, and a real Postman collection to call it with. A plain GET href, not a fetch: the browser handles the file download via the server's own Content-Disposition header. */
+export function postmanCollectionUrl(agentVersionId: string): string {
+  return `${API_BASE}/api/agents/${agentVersionId}/postman`;
+}
+
+// ---------- Publish / Admin Review ----------
+
+export interface PublishResult {
+  reviewSubmissionId: string;
+  status: "pending";
+  effectiveness: number;
+  safety: number;
+}
+
+export function publishAgentVersion(agentVersionId: string): Promise<PublishResult> {
+  return request<PublishResult>(`/api/agents/${agentVersionId}/publish`, { method: "POST" });
+}
+
+export interface SanitizedCapability {
+  toolName: string;
+  sensitivity: Sensitivity;
+}
+
+export interface SanitizedManifest {
+  name: string;
+  description: string;
+  model: string;
+  graphType: string;
+  capabilities: SanitizedCapability[];
+}
+
+export interface ReviewSubmission {
+  id: string;
+  sanitizedManifest: SanitizedManifest;
+  effectivenessScore: number;
+  safetyScore: number;
+  status: string;
+  priority: number;
+  submittedAt: string;
+}
+
+export function listReviewSubmissions(status?: string): Promise<ReviewSubmission[]> {
+  return request<ReviewSubmission[]>(`/api/review-submissions${status ? `?status=${encodeURIComponent(status)}` : ""}`);
+}
+
+export type ReviewDecision = "approved" | "changes_requested" | "rejected";
+
+export interface DecideResult {
+  status: ReviewDecision;
+  marketplaceId: string | null;
+}
+
+export function decideReviewSubmission(id: string, decision: ReviewDecision, notes?: string): Promise<DecideResult> {
+  return request<DecideResult>(`/api/review-submissions/${id}/decide`, { method: "POST", body: JSON.stringify({ decision, notes }) });
 }

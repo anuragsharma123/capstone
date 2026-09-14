@@ -7,6 +7,7 @@ import { DEFAULT_OWNER_ID, DEFAULT_TENANT_ID } from "../tenancy.js";
 import { startRun, resumeRun, type RunPaused, type RunFinished } from "../run/runtime.js";
 import type { AgentConfigDoc } from "./builder.js";
 import { ServiceError } from "./registry.js";
+import { score } from "./scoring.js";
 import type { Decision } from "langchain";
 
 export type RunStartResult = (RunPaused | RunFinished) & { threadId: string };
@@ -22,6 +23,24 @@ async function loadConfig(agentVersionId: string): Promise<AgentConfigDoc> {
   return rows[0].config;
 }
 
+// Score() is a pure function of the config alone (DESIGN-NOTES §2.12) — it
+// never needed a test's actual output as input, only a moment to run. That
+// moment used to be Publish only, which left "I tested it successfully" and
+// "the score changed" looking unrelated to a user watching the browser. A
+// completed run (not still paused on approval) is a reasonable proxy for
+// "this agent works" without redefining what the rubric measures — the
+// Publish gate below still independently re-checks the threshold.
+async function scoreAndPersist(agentVersionId: string, config: AgentConfigDoc): Promise<void> {
+  const { effectiveness, safety, breakdown } = score(config);
+  const pool = getPool();
+  await pool.query("UPDATE agent_versions SET effectiveness_score = $1, safety_score = $2, score_breakdown = $3 WHERE id = $4", [
+    effectiveness,
+    safety,
+    JSON.stringify(breakdown),
+    agentVersionId,
+  ]);
+}
+
 export async function startAgentRun(agentVersionId: string, message: string): Promise<RunStartResult> {
   const config = await loadConfig(agentVersionId);
   const threadId = randomUUID();
@@ -29,8 +48,8 @@ export async function startAgentRun(agentVersionId: string, message: string): Pr
 
   const pool = getPool();
   await pool.query(
-    `INSERT INTO graph_runs (id, owner_id, tenant_id, agent_version_id, kind, thread_id, status, interrupt_kind, interrupt_payload, result)
-     VALUES ($1, $2, $3, $4, 'playground', $5, $6, $7, $8, $9)`,
+    `INSERT INTO graph_runs (id, owner_id, tenant_id, agent_version_id, kind, thread_id, status, interrupt_kind, interrupt_payload, result, trigger_message)
+     VALUES ($1, $2, $3, $4, 'playground', $5, $6, $7, $8, $9, $10)`,
     [
       randomUUID(),
       DEFAULT_OWNER_ID,
@@ -41,8 +60,11 @@ export async function startAgentRun(agentVersionId: string, message: string): Pr
       result.status === "interrupted" ? "await_approval" : null,
       result.status === "interrupted" ? JSON.stringify(result) : null,
       result.status === "completed" ? JSON.stringify({ output: result.output }) : null,
+      message,
     ]
   );
+
+  if (result.status === "completed") await scoreAndPersist(agentVersionId, config);
 
   return { ...result, threadId };
 }
@@ -70,6 +92,8 @@ export async function resumeAgentRun(threadId: string, decisions: Decision[]): P
     ]
   );
 
+  if (result.status === "completed") await scoreAndPersist(run.agent_version_id, config);
+
   return result;
 }
 
@@ -77,6 +101,7 @@ export interface RunDetail {
   threadId: string;
   agentVersionId: string;
   status: string;
+  triggerMessage: string | null;
   hitlRequest: unknown | null;
   output: string | null;
   updatedAt: string;
@@ -88,11 +113,12 @@ export async function getRunDetail(threadId: string): Promise<RunDetail> {
   const { rows } = await pool.query<{
     agent_version_id: string;
     status: string;
+    trigger_message: string | null;
     interrupt_payload: { hitlRequest?: unknown } | null;
     result: { output?: string } | null;
     updated_at: Date;
   }>(
-    "SELECT agent_version_id, status, interrupt_payload, result, updated_at FROM graph_runs WHERE thread_id = $1 AND owner_id = $2 AND kind = 'playground'",
+    "SELECT agent_version_id, status, trigger_message, interrupt_payload, result, updated_at FROM graph_runs WHERE thread_id = $1 AND owner_id = $2 AND kind = 'playground'",
     [threadId, DEFAULT_OWNER_ID]
   );
   const row = rows[0];
@@ -101,6 +127,7 @@ export async function getRunDetail(threadId: string): Promise<RunDetail> {
     threadId,
     agentVersionId: row.agent_version_id,
     status: row.status,
+    triggerMessage: row.trigger_message,
     hitlRequest: row.interrupt_payload?.hitlRequest ?? null,
     output: row.result?.output ?? null,
     updatedAt: row.updated_at.toISOString(),

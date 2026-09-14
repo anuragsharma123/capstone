@@ -173,6 +173,10 @@ export async function connectDatabase(): Promise<void> {
     );
     CREATE INDEX IF NOT EXISTS graph_runs_owner_interrupted_idx ON graph_runs (owner_id, status) WHERE status = 'interrupted';
     ALTER TABLE graph_runs ADD COLUMN IF NOT EXISTS result JSONB;
+    -- What actually triggered a 'playground'-kind run — the typed message
+    -- (manual test) or the webhook's translated payload. Without this, run
+    -- history can show what an agent answered but never what it was asked.
+    ALTER TABLE graph_runs ADD COLUMN IF NOT EXISTS trigger_message TEXT;
 
     -- The review island (data-model.html "Cross-tenant by design — the
     -- marketplace door is the one place isolation is relaxed"): no owner_id,

@@ -97,6 +97,16 @@ export function ToolsEmptyIcon() {
   );
 }
 
+export function ReviewIcon() {
+  return (
+    <svg viewBox="0 0 20 20" fill="none" aria-hidden="true">
+      <rect x="4" y="3" width="12" height="14" rx="1.4" stroke="currentColor" strokeWidth="1.5" />
+      <path d="M7 8 L9 10 L13.5 5.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M7 13 H13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function ComingSoonIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">

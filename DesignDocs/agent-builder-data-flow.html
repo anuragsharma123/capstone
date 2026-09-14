@@ -248,6 +248,11 @@
         <i><span class="sw cp"></span> checkpoint (durable state)</i>
         <i><span class="sw pause"></span> stream to a human · pause</i>
       </div>
+      <div class="callout" style="margin-top:14px">
+        <h3>Update — 2026-09-13: steps 18–19 don't happen here</h3>
+        <p>This diagram draws <code>score(config)</code> as part of the build graph's own Phase 3, right before the <code>agent_versions</code> insert — that was the original plan, but it isn't what runs. <code>score_agent</code> was never wired in as a graph node calling the Scoring Engine at build time; step 20's insert happens with <code>status='draft'</code> and both scores <code>NULL</code>, exactly as step 20's own note below already says.</p>
+        <p>The Scoring Engine itself (<a href="#score">below</a>) is unchanged — still the same pure function of the config, no LLM. What changed is <em>when</em> it's called: <b>Publish</b> always did (<a href="#publish">below</a>); as of 2026-09-13, <b>any completed test run</b> — a Playground message or a webhook trigger reaching <code>status: 'completed'</code> — also calls it and persists the result immediately (<code>services/runner.ts</code>). So a freshly built, never-tested agent still shows no score; the first successful run is what produces one, not the build itself.</p>
+      </div>
     </div>
   </section>
 
@@ -259,14 +264,14 @@
         <thead><tr><th>Node</th><th>What it does</th></tr></thead>
         <tbody>
           <tr><td class="c1">parse_intent</td><td class="c2">LLM turns the sentence into a capability spec — <em>needs to read issues, needs to post a message</em></td></tr>
-          <tr><td class="c1">search_registry</td><td class="c2">a second, distinct LLM call — a tool-selection sub-agent shown the user's full <code>mcp_servers</code> / <code>mcp_tools</code> catalog (names, descriptions, sensitivity) and asked to pick the minimal set the request actually needs. <b>Update — 2026-09-12:</b> originally an ILIKE keyword match; that pulled in a server's <em>entire</em> unrelated tool set (e.g. <code>delete_file</code>, <code>create_repository</code>) whenever one loose keyword like "commit" matched any of its tool descriptions. Every pick is still re-validated against the real catalog rows before anything downstream sees it — sensitivity always comes from that row, never from the model (Rule 4).</td></tr>
-          <tr><td class="c1">⏸ present_tools</td><td class="c2"><b>PAUSE 1</b> — shows candidates, user ticks the ones to include</td></tr>
+          <tr><td class="c1">search_registry</td><td class="c2">a second, distinct LLM call — a tool-selection sub-agent shown the user's full <code>mcp_servers</code> / <code>mcp_tools</code> catalog (names, descriptions, sensitivity) and asked to pick the minimal set the request actually needs. <b>Update — 2026-09-12:</b> originally an ILIKE keyword match; that pulled in a server's <em>entire</em> unrelated tool set (e.g. <code>delete_file</code>, <code>create_repository</code>) whenever one loose keyword like "commit" matched any of its tool descriptions. Every pick is still re-validated against the real catalog rows before anything downstream sees it — sensitivity always comes from that row, never from the model (Rule 4). <b>Update — 2026-09-13:</b> when <code>parse_intent</code> calls for <code>coordinator_specialist</code> (below), this same sub-agent call runs once per role — coordinator plus each named specialist, in parallel — so every role gets its own minimal tool set instead of one shared pool.</td></tr>
+          <tr><td class="c1">⏸ present_tools</td><td class="c2"><b>PAUSE 1</b> — shows candidates, grouped by role once more than one role is in play; user ticks the ones to include</td></tr>
           <tr><td class="c1">check_connections</td><td class="c2">for each picked server: <code>SELECT 1 FROM connections WHERE owner_id, server_id</code></td></tr>
           <tr><td class="c1">⏸ request_credentials</td><td class="c2"><b>PAUSE 2</b> — <em>only if</em> a connection is missing; ask for the token, then re-run <code>check_connections</code></td></tr>
           <tr><td class="c1">generate_config</td><td class="c2">assemble the <code>agent_versions.config</code> document — see below</td></tr>
-          <tr><td class="c1">score_agent</td><td class="c2">call the Scoring Engine → effectiveness + safety + breakdown</td></tr>
+          <tr><td class="c1">score_agent</td><td class="c2">call the Scoring Engine → effectiveness + safety + breakdown. <b>Update — 2026-09-13:</b> not actually called here — see the note under <a href="#flow">the data flow</a> above.</td></tr>
           <tr><td class="c1">deploy</td><td class="c2">mark the version <code>deployed</code>, register its endpoint</td></tr>
-          <tr><td class="c1">done</td><td class="c2">return the finished agent card</td></tr>
+          <tr><td class="c1">done</td><td class="c2">return the finished agent card — from here the built agent is browsable at <b>My Agents</b> (<code>GET /api/agents/:agentId</code>, added 2026-09-13), including its full run history. That screen just reads this graph's persisted output; it isn't part of the graph itself.</td></tr>
         </tbody>
       </table>
     </div>
@@ -306,7 +311,7 @@
           <tr><td class="c1">name · description</td><td class="c2">LLM · human-facing</td></tr>
           <tr><td class="c1">model</td><td class="c2">policy — e.g. <code>claude-sonnet-5</code></td></tr>
           <tr><td class="c1">system_prompt</td><td class="c2"><b>LLM</b> · the instructions, written from the intent</td></tr>
-          <tr><td class="c1">graph</td><td class="c2">LLM picks the <em>type</em> (<code>sequential</code> | <code>coordinator_specialist</code>); nodes/edges follow</td></tr>
+          <tr><td class="c1">graph</td><td class="c2">LLM picks the <em>type</em> — <code>coordinator_specialist</code> only when the request genuinely splits into ≥2 distinct delegated sub-tasks (e.g. one role gathers, another assesses), <code>sequential</code> otherwise. For <code>coordinator_specialist</code>, it also names each specialist (<code>name</code>, <code>description</code>, <code>system_prompt</code>) — <b>built 2026-09-13</b>, see the worked example below.</td></tr>
           <tr><td class="c1">tools[]</td><td class="c2"><b>mechanical, from <code>mcp_tools</code></b> · each: <code>{ mcp_server_id, tool_name, sensitivity, require_approval }</code></td></tr>
           <tr><td class="c1">interrupt_before</td><td class="c2"><b>mechanical</b> · every tool with <code>sensitivity in (write, destructive)</code> — <em>not</em> from the prompt</td></tr>
         </tbody>
@@ -326,10 +331,28 @@
   "interrupt_before": ["post_message"]
 }</code></pre>
 
+    <p style="margin-top:20px"><b>coordinator_specialist</b> — built and verified live 2026-09-13 (GitHub issue triage → Slack digest). Each specialist gets its own <code class="inl">tools[]</code>, nested under <code class="inl">graph.specialists[]</code>; the top-level <code class="inl">tools</code>/<code class="inl">interrupt_before</code> are the <em>coordinator's own</em>, kept separate:</p>
+    <pre><code class="language-json">{
+  "graph": {
+    "type": "coordinator_specialist",
+    "specialists": [
+      { "name": "issue_gatherer",   "description": "Gathers open GitHub issues.",
+        "system_prompt": "Fetch all open issues …",
+        "tools": [ { "tool_name": "list_issues", "sensitivity": "read", "require_approval": false } ] },
+      { "name": "severity_assessor", "description": "Assesses severity, picks the most urgent.",
+        "system_prompt": "Evaluate each issue's labels and age …",
+        "tools": [ { "tool_name": "issue_read", "sensitivity": "read", "require_approval": false } ] }
+    ]
+  },
+  "tools": [ { "tool_name": "slack_send_message", "sensitivity": "write", "require_approval": true } ],
+  "interrupt_before": ["slack_send_message"]
+}</code></pre>
+
     <ol class="steps">
       <li><p><b>Portable.</b> Tools reference <code class="inl">mcp_server_id</code> + capability, never a credential. The same document installs into another tenant who brings their own connection; the runtime resolves <code class="inl">mcp_server_id</code> → <em>the caller's</em> connection at run time.</p></li>
       <li><p><b>Versioned.</b> Every build or later edit is a new <code class="inl">agent_versions</code> row — never mutated in place.</p></li>
       <li><p><b>Safe by construction.</b> The gate (<code class="inl">interrupt_before</code>) is derived from the DB's <code class="inl">sensitivity</code> marking, so a model can't talk its way past it and neither can a hand-edited prompt.</p></li>
+      <li><p><b>Rule 4 holds under coordinator_specialist too.</b> Code reassigns any non-read tool to the coordinator at assembly time, regardless of which role's tool-selection call actually picked it — a specialist's own <code class="inl">tools[]</code> can only ever be <code class="inl">read</code>. Only the coordinator gets <code class="inl">humanInTheLoopMiddleware</code> at run time, so this isn't a convention a prompt could violate; a specialist structurally cannot hold the one thing that needs approval.</p></li>
     </ol>
   </section>
 
@@ -445,8 +468,9 @@ model: "claude-sonnet-5"   graph: sequential (2 nodes)   schedule: none</code></
           <tr><td class="c1">step 2</td><td class="c2"><code>graph_runs</code> — INSERT <code>{ kind: 'build', thread_id, status: 'running', owner_id, tenant_id }</code></td></tr>
           <tr><td class="c1">steps 7, 13</td><td class="c2"><code>graph_runs</code> — UPDATE <code>status='interrupted'</code>, <code>interrupt_kind</code>, <code>interrupt_payload</code> &nbsp;·&nbsp; checkpointer tables — full graph state</td></tr>
           <tr><td class="c1">steps 10, 15</td><td class="c2"><code>graph_runs</code> — UPDATE <code>status='running'</code> on each resume</td></tr>
-          <tr><td class="c1">step 20</td><td class="c2"><code>agent_versions</code> — INSERT <code>{ config, version, status: 'draft', owner_id, tenant_id }</code>. <b>Update — 2026-09-12:</b> not <code>'deployed'</code> as originally assumed here — the build graph never sets that status, and the Runtime (<code>run/runtime.ts</code>) doesn't check <code>status</code> at all yet, so a <code>'draft'</code> version runs exactly like any other. "Deployed" as a distinct, gated state isn't built.</td></tr>
+          <tr><td class="c1">step 20</td><td class="c2"><code>agent_versions</code> — INSERT <code>{ config, version, status: 'draft', owner_id, tenant_id }</code>, both scores <code>NULL</code>. <b>Update — 2026-09-12:</b> not <code>'deployed'</code> as originally assumed here — the build graph never sets that status, and the Runtime (<code>run/runtime.ts</code>) doesn't check <code>status</code> at all yet, so a <code>'draft'</code> version runs exactly like any other. "Deployed" as a distinct, gated state isn't built.</td></tr>
           <tr><td class="c1">step 21</td><td class="c2"><code>graph_runs</code> — UPDATE <code>status='completed'</code></td></tr>
+          <tr><td class="c1">test run completes <span style="font-weight:normal;color:var(--muted)">(new — 2026-09-13)</span></td><td class="c2"><code>agent_versions</code> — UPDATE <code>effectiveness_score</code>, <code>safety_score</code>, <code>score_breakdown</code> — the first point at which a freshly built agent gets a real score, well before anyone asks to publish. Same <code>score()</code> call Publish uses below; <code>status</code> untouched.</td></tr>
           <tr><td class="c1">publish</td><td class="c2"><code>agent_versions</code> — UPDATE <code>effectiveness_score</code>, <code>safety_score</code>, <code>score_breakdown</code>, <code>status='in_review'</code> &nbsp;·&nbsp; <code>graph_runs</code> — INSERT <code>{ kind: 'review', status: 'completed' }</code> (an FK anchor only, not a real thread — see <a href="#publish">Publish → Review → Marketplace</a>) &nbsp;·&nbsp; <code>review_submissions</code> — INSERT sanitized manifest + scores, <code>status='pending'</code></td></tr>
           <tr><td class="c1">admin decides</td><td class="c2"><code>review_submissions</code> — UPDATE <code>status</code>, <code>decision_notes</code>, <code>decided_at</code> &nbsp;·&nbsp; if approved: <code>marketplace</code> — INSERT, <code>agent_versions.status='published'</code> &nbsp;·&nbsp; else: <code>agent_versions.status='draft'</code></td></tr>
         </tbody>
