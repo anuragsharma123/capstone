@@ -5,8 +5,7 @@
 // are only written once both pauses have cleared — nothing is persisted at
 // either pause itself.
 import { randomUUID, randomBytes } from "node:crypto";
-import { getPool } from "../db.js";
-import { DEFAULT_OWNER_ID, DEFAULT_TENANT_ID } from "../tenancy.js";
+import { withTenant, type TenantAuth } from "../db.js";
 import {
   startBuild,
   resumeBuild,
@@ -84,15 +83,16 @@ export interface BuildResumeCompleted {
 export type BuildResumeResult = BuildPause | BuildResumeCompleted;
 
 /** Kicks off a build thread from a free-text prompt; always pauses at present_tools for confirmation. */
-export async function startAgentBuild(prompt: string): Promise<BuildStartResult> {
+export async function startAgentBuild(auth: TenantAuth, prompt: string): Promise<BuildStartResult> {
   const threadId = randomUUID();
-  const pause = await startBuild(threadId, prompt);
+  const pause = await startBuild(threadId, auth, prompt);
 
-  const pool = getPool();
-  await pool.query(
-    `INSERT INTO graph_runs (id, owner_id, tenant_id, kind, thread_id, status, interrupt_kind, interrupt_payload)
-     VALUES ($1, $2, $3, 'build', $4, 'interrupted', $5, $6)`,
-    [randomUUID(), DEFAULT_OWNER_ID, DEFAULT_TENANT_ID, threadId, pause.interruptKind, JSON.stringify(pause)]
+  await withTenant(auth, (client) =>
+    client.query(
+      `INSERT INTO graph_runs (id, owner_id, tenant_id, kind, thread_id, status, interrupt_kind, interrupt_payload)
+       VALUES ($1, $2, $3, 'build', $4, 'interrupted', $5, $6)`,
+      [randomUUID(), auth.userId, auth.tenantId, threadId, pause.interruptKind, JSON.stringify(pause)]
+    )
   );
 
   return { ...pause, threadId };
@@ -100,13 +100,15 @@ export async function startAgentBuild(prompt: string): Promise<BuildStartResult>
 
 /** Resumes a paused build thread. Body shape must match the thread's current interrupt_kind — checked below, not left to the caller. */
 export async function resumeAgentBuild(
+  auth: TenantAuth,
   threadId: string,
   body: { confirmedTools?: ConfirmedToolRef[]; credentials?: CredentialSubmission[] }
 ): Promise<BuildResumeResult> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ id: string; interrupt_kind: string }>(
-    "SELECT id, interrupt_kind FROM graph_runs WHERE thread_id = $1 AND owner_id = $2 AND status = 'interrupted'",
-    [threadId, DEFAULT_OWNER_ID]
+  const { rows } = await withTenant(auth, (client) =>
+    client.query<{ id: string; interrupt_kind: string }>(
+      "SELECT id, interrupt_kind FROM graph_runs WHERE thread_id = $1 AND owner_id = $2 AND status = 'interrupted'",
+      [threadId, auth.userId]
+    )
   );
   const run = rows[0];
   if (!run) throw new ServiceError(404, "No paused build found for that thread.");
@@ -125,9 +127,12 @@ export async function resumeAgentBuild(
   const result = await resumeBuild(threadId, resumeValue);
 
   if (result.status === "interrupted") {
-    await pool.query(
-      "UPDATE graph_runs SET interrupt_kind = $1, interrupt_payload = $2, updated_at = now() WHERE id = $3",
-      [result.interruptKind, JSON.stringify(result), run.id]
+    await withTenant(auth, (client) =>
+      client.query("UPDATE graph_runs SET interrupt_kind = $1, interrupt_payload = $2, updated_at = now() WHERE id = $3", [
+        result.interruptKind,
+        JSON.stringify(result),
+        run.id,
+      ])
     );
     return result;
   }
@@ -198,23 +203,25 @@ export async function resumeAgentBuild(
   const agentId = randomUUID();
   const agentVersionId = randomUUID();
 
-  await pool.query("INSERT INTO agents (id, owner_id, tenant_id, name) VALUES ($1, $2, $3, $4)", [
-    agentId,
-    DEFAULT_OWNER_ID,
-    DEFAULT_TENANT_ID,
-    result.parsed.name,
-  ]);
-  await pool.query(
-    `INSERT INTO agent_versions (id, agent_id, owner_id, tenant_id, version, config, status)
-     VALUES ($1, $2, $3, $4, 1, $5, 'draft')`,
-    [agentVersionId, agentId, DEFAULT_OWNER_ID, DEFAULT_TENANT_ID, JSON.stringify(config)]
-  );
-  await pool.query(
-    `UPDATE graph_runs
-     SET status = 'completed', agent_version_id = $1, interrupt_kind = NULL, interrupt_payload = NULL, updated_at = now()
-     WHERE id = $2`,
-    [agentVersionId, run.id]
-  );
+  await withTenant(auth, async (client) => {
+    await client.query("INSERT INTO agents (id, owner_id, tenant_id, name) VALUES ($1, $2, $3, $4)", [
+      agentId,
+      auth.userId,
+      auth.tenantId,
+      result.parsed!.name,
+    ]);
+    await client.query(
+      `INSERT INTO agent_versions (id, agent_id, owner_id, tenant_id, version, config, status)
+       VALUES ($1, $2, $3, $4, 1, $5, 'draft')`,
+      [agentVersionId, agentId, auth.userId, auth.tenantId, JSON.stringify(config)]
+    );
+    await client.query(
+      `UPDATE graph_runs
+       SET status = 'completed', agent_version_id = $1, interrupt_kind = NULL, interrupt_payload = NULL, updated_at = now()
+       WHERE id = $2`,
+      [agentVersionId, run.id]
+    );
+  });
 
   return { status: "completed", agentId, agentVersionId, config };
 }

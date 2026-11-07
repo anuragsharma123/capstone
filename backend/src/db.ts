@@ -9,11 +9,16 @@
 // ciphertext + wrapped_dek in `connections` — never a token column
 // anywhere else.
 //
-// What's simplified here vs. the documented design: RLS policies aren't
-// enabled yet (owner_id/tenant_id are hard-coded — see tenancy.ts, there's
-// no auth system yet, so there's only one owner to isolate). The schema is
-// already RLS-ready; enabling it is a natural next step once real auth
-// exists. See README "What's deliberately simplified".
+// Multi-tenancy (Rule 2): `owner_id`/`tenant_id` are real UUID FKs into
+// `users`/`tenants` now, not a hard-coded pair of strings (tenancy.ts is
+// gone). RLS itself (ENABLE/FORCE ROW LEVEL SECURITY + policies) is a
+// separate, later step — see DESIGN-NOTES §2.3/§7 for that boundary. What's
+// real as of this change: every request carries a verified identity
+// (auth.ts, requireAuth middleware), and every query runs inside
+// `withTenant()`, which sets `app.user_id`/`app.tenant_id` as Postgres
+// session variables for the duration of that request's transaction — the
+// exact variables §2.3's RLS policy reads from, so turning RLS on later
+// needs no change here, only new policies.
 import { resolve, join } from "node:path";
 import { access } from "node:fs/promises";
 import EmbeddedPostgres from "embedded-postgres";
@@ -74,10 +79,28 @@ export async function connectDatabase(): Promise<void> {
   });
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS tenants (
+      id UUID PRIMARY KEY,
+      name TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
+    -- One tenant per user for now (confirmed scope) — a signup creates both
+    -- rows together (services/users.ts). Nothing here blocks multiple users
+    -- sharing a tenant_id later; that's an invite flow, not a schema change.
+    CREATE TABLE IF NOT EXISTS users (
+      id UUID PRIMARY KEY,
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
+      email TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      is_admin BOOLEAN NOT NULL DEFAULT false,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+    );
+
     CREATE TABLE IF NOT EXISTS mcp_servers (
       id UUID PRIMARY KEY,
-      owner_id TEXT NOT NULL,
-      tenant_id TEXT NOT NULL,
+      owner_id UUID NOT NULL REFERENCES users(id),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
       name TEXT NOT NULL,
       address TEXT NOT NULL,
       transport TEXT NOT NULL DEFAULT 'streamable_http',
@@ -97,8 +120,8 @@ export async function connectDatabase(): Promise<void> {
     CREATE TABLE IF NOT EXISTS mcp_tools (
       id UUID PRIMARY KEY,
       server_id UUID NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
-      owner_id TEXT NOT NULL,
-      tenant_id TEXT NOT NULL,
+      owner_id UUID NOT NULL REFERENCES users(id),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
       name TEXT NOT NULL,
       description TEXT,
       sensitivity TEXT NOT NULL,
@@ -110,8 +133,8 @@ export async function connectDatabase(): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS connections (
       id UUID PRIMARY KEY,
-      owner_id TEXT NOT NULL,
-      tenant_id TEXT NOT NULL,
+      owner_id UUID NOT NULL REFERENCES users(id),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
       server_id UUID NOT NULL REFERENCES mcp_servers(id) ON DELETE CASCADE,
       ciphertext BYTEA NOT NULL,
       wrapped_dek BYTEA NOT NULL,
@@ -128,8 +151,8 @@ export async function connectDatabase(): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS agents (
       id UUID PRIMARY KEY,
-      owner_id TEXT NOT NULL,
-      tenant_id TEXT NOT NULL,
+      owner_id UUID NOT NULL REFERENCES users(id),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
       name TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT now()
     );
@@ -137,8 +160,8 @@ export async function connectDatabase(): Promise<void> {
     CREATE TABLE IF NOT EXISTS agent_versions (
       id UUID PRIMARY KEY,
       agent_id UUID NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
-      owner_id TEXT NOT NULL,
-      tenant_id TEXT NOT NULL,
+      owner_id UUID NOT NULL REFERENCES users(id),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
       version INT NOT NULL,
       config JSONB NOT NULL,
       effectiveness_score NUMERIC(5, 2),
@@ -152,8 +175,8 @@ export async function connectDatabase(): Promise<void> {
 
     CREATE TABLE IF NOT EXISTS graph_runs (
       id UUID PRIMARY KEY,
-      owner_id TEXT NOT NULL,
-      tenant_id TEXT NOT NULL,
+      owner_id UUID NOT NULL REFERENCES users(id),
+      tenant_id UUID NOT NULL REFERENCES tenants(id),
       agent_version_id UUID REFERENCES agent_versions(id),
       kind TEXT NOT NULL CHECK (kind IN ('build', 'playground', 'review')),
       thread_id TEXT NOT NULL UNIQUE,
@@ -214,4 +237,33 @@ export async function connectDatabase(): Promise<void> {
 export function getPool(): pg.Pool {
   if (!pool) throw new Error("Database not connected yet — call connectDatabase() first.");
   return pool;
+}
+
+export interface TenantAuth {
+  userId: string;
+  tenantId: string;
+}
+
+/**
+ * Every owner-scoped query runs through here. `set_config(..., true)` is
+ * `SET LOCAL` parameterized — session vars only live for this one
+ * transaction, on this one checked-out client, never leaking onto another
+ * request that happens to reuse the connection from the pool afterward.
+ * These are exactly the two vars DESIGN-NOTES §2.3's RLS policy reads —
+ * enabling RLS later is a policy + role change, not a call-site change.
+ */
+export async function withTenant<T>(auth: TenantAuth, fn: (client: pg.PoolClient) => Promise<T>): Promise<T> {
+  const client = await getPool().connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("SELECT set_config('app.user_id', $1, true), set_config('app.tenant_id', $2, true)", [auth.userId, auth.tenantId]);
+    const result = await fn(client);
+    await client.query("COMMIT");
+    return result;
+  } catch (err) {
+    await client.query("ROLLBACK");
+    throw err;
+  } finally {
+    client.release();
+  }
 }

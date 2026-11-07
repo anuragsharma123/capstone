@@ -1,6 +1,7 @@
 import express from "express";
 import { config } from "./config.js";
 import { connectDatabase } from "./db.js";
+import { router as authRouter } from "./routes/auth.js";
 import { router as serversRouter } from "./routes/servers.js";
 import { router as agentsRouter } from "./routes/agents.js";
 import { router as runsRouter } from "./routes/runs.js";
@@ -26,7 +27,7 @@ async function main(): Promise<void> {
   app.use((req, res, next) => {
     res.header("Access-Control-Allow-Origin", "*");
     res.header("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS");
-    res.header("Access-Control-Allow-Headers", "Content-Type, Accept");
+    res.header("Access-Control-Allow-Headers", "Content-Type, Accept, Authorization");
     if (req.method === "OPTIONS") {
       res.sendStatus(204);
       return;
@@ -45,6 +46,16 @@ async function main(): Promise<void> {
       },
     })
   );
+  // Registered before every auth-protected router — a mounted router's own
+  // `router.use(requireAuth)` runs unconditionally for any request that
+  // reaches it (Express doesn't check whether one of its specific routes
+  // would've matched first), so /healthz would otherwise 401 by falling
+  // through into the first protected router instead of ever reaching this.
+  app.get("/healthz", (_req, res) => {
+    res.json({ status: "ok" });
+  });
+
+  app.use(authRouter);
   app.use(serversRouter);
   app.use(agentsRouter);
   app.use(runsRouter);
@@ -52,12 +63,11 @@ async function main(): Promise<void> {
   app.use(webhooksRouter);
   app.use(postmanRouter);
 
-  app.get("/healthz", (_req, res) => {
-    res.json({ status: "ok" });
-  });
-
   const httpServer = app.listen(config.PORT, () => {
     console.error(`anurag-backend listening on http://localhost:${config.PORT}`);
+    console.error(`  POST   /api/auth/signup             create an account (first ever account becomes admin)`);
+    console.error(`  POST   /api/auth/login              sign in, get a token`);
+    console.error(`  GET    /api/auth/me                 the current signed-in user`);
     console.error(`  POST   /api/servers                register a server (discovery + classification)`);
     console.error(`  GET    /api/servers                 list registered servers + their tools`);
     console.error(`  DELETE /api/servers/:id              remove a server`);
@@ -71,6 +81,7 @@ async function main(): Promise<void> {
     console.error(`  GET    /api/review-submissions          list the admin review queue`);
     console.error(`  POST   /api/review-submissions/:id/decide   approve / request changes / reject`);
     console.error(`  GET    /api/marketplace                 list published (sanitized) agents`);
+    console.error(`  POST   /api/marketplace/:id/install     copy a listing into your own workspace as a new agent`);
     console.error(`  POST   /api/webhooks/:versionId         trigger a webhook-configured agent (verified, async)`);
     console.error(`  GET    /api/agents/runs/pending          every run still waiting on a human approval`);
     console.error(`  GET    /api/agents                       list every agent (My Agents)`);

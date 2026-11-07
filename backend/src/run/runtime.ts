@@ -20,8 +20,7 @@
 import { createAgent, tool, humanInTheLoopMiddleware, type HITLRequest, type Decision } from "langchain";
 import { HumanMessage, type BaseMessage } from "@langchain/core/messages";
 import { Command, isInterrupted, INTERRUPT } from "@langchain/langgraph";
-import { getPool } from "../db.js";
-import { DEFAULT_OWNER_ID } from "../tenancy.js";
+import { withTenant, type TenantAuth } from "../db.js";
 import { getConnectionAuth, ServiceError } from "../services/registry.js";
 import { attachAuth } from "../authSpec.js";
 import { callTool } from "../mcpClient.js";
@@ -36,24 +35,25 @@ interface RuntimeTool {
   inputSchema: unknown;
 }
 
-async function loadRuntimeTools(tools: AgentConfigTool[]): Promise<RuntimeTool[]> {
-  const pool = getPool();
-  const runtimeTools: RuntimeTool[] = [];
-  for (const t of tools) {
-    const { rows } = await pool.query<{ address: string; description: string | null; input_schema: unknown }>(
-      `SELECT s.address, t.description, t.input_schema
-       FROM mcp_tools t JOIN mcp_servers s ON s.id = t.server_id
-       WHERE t.server_id = $1 AND t.name = $2 AND t.owner_id = $3`,
-      [t.mcp_server_id, t.tool_name, DEFAULT_OWNER_ID]
-    );
-    const row = rows[0];
-    if (!row) throw new ServiceError(500, `Tool '${t.tool_name}' in this agent's config no longer exists in the registry.`);
-    runtimeTools.push({ mcpServerId: t.mcp_server_id, toolName: t.tool_name, address: row.address, description: row.description, inputSchema: row.input_schema });
-  }
-  return runtimeTools;
+async function loadRuntimeTools(auth: TenantAuth, tools: AgentConfigTool[]): Promise<RuntimeTool[]> {
+  return withTenant(auth, async (client) => {
+    const runtimeTools: RuntimeTool[] = [];
+    for (const t of tools) {
+      const { rows } = await client.query<{ address: string; description: string | null; input_schema: unknown }>(
+        `SELECT s.address, t.description, t.input_schema
+         FROM mcp_tools t JOIN mcp_servers s ON s.id = t.server_id
+         WHERE t.server_id = $1 AND t.name = $2 AND t.owner_id = $3`,
+        [t.mcp_server_id, t.tool_name, auth.userId]
+      );
+      const row = rows[0];
+      if (!row) throw new ServiceError(500, `Tool '${t.tool_name}' in this agent's config no longer exists in the registry.`);
+      runtimeTools.push({ mcpServerId: t.mcp_server_id, toolName: t.tool_name, address: row.address, description: row.description, inputSchema: row.input_schema });
+    }
+    return runtimeTools;
+  });
 }
 
-function buildLangchainTools(runtimeTools: RuntimeTool[]) {
+function buildLangchainTools(auth: TenantAuth, runtimeTools: RuntimeTool[]) {
   return runtimeTools.map((rt) =>
     tool(
       async (input: Record<string, unknown>) => {
@@ -68,8 +68,8 @@ function buildLangchainTools(runtimeTools: RuntimeTool[]) {
         // final text can claim anything, this line is ground truth for
         // whether a real external call happened.
         console.error(`tool executed: ${rt.toolName} (server ${rt.mcpServerId})`);
-        const auth = await getConnectionAuth(rt.mcpServerId);
-        const attachment = auth ? attachAuth(auth.authSpec, auth.values) : undefined;
+        const connAuth = await getConnectionAuth(auth, rt.mcpServerId);
+        const attachment = connAuth ? attachAuth(connAuth.authSpec, connAuth.values) : undefined;
         const result = await callTool(rt.address, rt.toolName, input, attachment);
         const text = result.content.map((c) => c.text ?? "").join("\n");
         if (result.isError) throw new Error(text || `${rt.toolName} failed.`);
@@ -115,11 +115,11 @@ function lastMessageText(messages: BaseMessage[]): string {
  * throws loudly here rather than silently letting a risky call through
  * ungated.
  */
-async function buildSpecialistTool(specialist: SpecialistConfig) {
-  const runtimeTools = await loadRuntimeTools(specialist.tools);
+async function buildSpecialistTool(auth: TenantAuth, specialist: SpecialistConfig) {
+  const runtimeTools = await loadRuntimeTools(auth, specialist.tools);
   const specialistAgent = createAgent({
     model: "anthropic:claude-sonnet-5",
-    tools: buildLangchainTools(runtimeTools),
+    tools: buildLangchainTools(auth, runtimeTools),
     systemPrompt: specialist.system_prompt,
   });
 
@@ -144,12 +144,14 @@ async function buildSpecialistTool(specialist: SpecialistConfig) {
   );
 }
 
-async function buildAgent(config: AgentConfigDoc) {
-  const coordinatorRuntimeTools = await loadRuntimeTools(config.tools);
-  const coordinatorTools = buildLangchainTools(coordinatorRuntimeTools);
+async function buildAgent(auth: TenantAuth, config: AgentConfigDoc) {
+  const coordinatorRuntimeTools = await loadRuntimeTools(auth, config.tools);
+  const coordinatorTools = buildLangchainTools(auth, coordinatorRuntimeTools);
 
   const specialistTools =
-    config.graph.type === "coordinator_specialist" ? await Promise.all(config.graph.specialists.map(buildSpecialistTool)) : [];
+    config.graph.type === "coordinator_specialist"
+      ? await Promise.all(config.graph.specialists.map((s) => buildSpecialistTool(auth, s)))
+      : [];
 
   return createAgent({
     model: "anthropic:claude-sonnet-5",
@@ -181,15 +183,15 @@ function readResult(result: unknown): RunPaused | RunFinished {
 }
 
 /** Starts a new run thread with a human message. Pauses at the first gated tool call, if any — always the coordinator's own, never a specialist's. */
-export async function startRun(threadId: string, config: AgentConfigDoc, message: string): Promise<RunPaused | RunFinished> {
-  const agent = await buildAgent(config);
+export async function startRun(auth: TenantAuth, threadId: string, config: AgentConfigDoc, message: string): Promise<RunPaused | RunFinished> {
+  const agent = await buildAgent(auth, config);
   const result = await agent.invoke({ messages: [new HumanMessage(message)] }, { configurable: { thread_id: threadId } });
   return readResult(result);
 }
 
 /** Resumes a run paused on a tool-approval request. */
-export async function resumeRun(threadId: string, config: AgentConfigDoc, decisions: Decision[]): Promise<RunPaused | RunFinished> {
-  const agent = await buildAgent(config);
+export async function resumeRun(auth: TenantAuth, threadId: string, config: AgentConfigDoc, decisions: Decision[]): Promise<RunPaused | RunFinished> {
+  const agent = await buildAgent(auth, config);
   const result = await agent.invoke(new Command({ resume: { decisions } }), { configurable: { thread_id: threadId } });
   return readResult(result);
 }

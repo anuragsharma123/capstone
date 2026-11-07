@@ -3,8 +3,10 @@ import { z } from "zod";
 import { registerServer, listServers, deleteServer, addConnection, removeConnection, ServiceError } from "../services/registry.js";
 import { AuthSpecSchema } from "../authSpec.js";
 import { TransportSchema } from "../transport.js";
+import { requireAuth } from "../middleware.js";
 
 export const router = Router();
+router.use(requireAuth);
 
 const ServerCreateSchema = z
   .object({
@@ -39,16 +41,16 @@ router.post("/api/servers", async (req: Request, res: Response) => {
     return;
   }
   try {
-    const server = await registerServer(parsed.data);
+    const server = await registerServer(req.auth!, parsed.data);
     res.status(201).json(server);
   } catch (err) {
     handleServiceError(err, res);
   }
 });
 
-router.get("/api/servers", async (_req: Request, res: Response) => {
+router.get("/api/servers", async (req: Request, res: Response) => {
   try {
-    res.json(await listServers());
+    res.json(await listServers(req.auth!));
   } catch (err) {
     handleServiceError(err, res);
   }
@@ -56,7 +58,7 @@ router.get("/api/servers", async (_req: Request, res: Response) => {
 
 router.delete("/api/servers/:id", async (req: Request, res: Response) => {
   try {
-    await deleteServer(req.params.id);
+    await deleteServer(req.auth!, req.params.id);
     res.status(204).end();
   } catch (err) {
     handleServiceError(err, res);
@@ -70,7 +72,7 @@ router.post("/api/servers/:id/connection", async (req: Request, res: Response) =
     return;
   }
   try {
-    const server = await addConnection(req.params.id, parsed.data.values);
+    const server = await addConnection(req.auth!, req.params.id, parsed.data.values);
     res.json(server);
   } catch (err) {
     handleServiceError(err, res);
@@ -79,7 +81,7 @@ router.post("/api/servers/:id/connection", async (req: Request, res: Response) =
 
 router.delete("/api/servers/:id/connection", async (req: Request, res: Response) => {
   try {
-    const server = await removeConnection(req.params.id);
+    const server = await removeConnection(req.auth!, req.params.id);
     res.json(server);
   } catch (err) {
     handleServiceError(err, res);

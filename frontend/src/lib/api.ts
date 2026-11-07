@@ -75,12 +75,32 @@ export const API_BASE = (import.meta.env.VITE_API_BASE_URL ?? "http://localhost:
 
 export class ApiError extends Error {}
 
+// Module-level, not React state — this file stays pure functions (project
+// convention: components don't own fetch logic, and this module doesn't own
+// React). AuthContext sets these on login/logout/bootstrap; every request()
+// call just reads whatever's current.
+let authToken: string | null = null;
+let unauthorizedHandler: (() => void) | null = null;
+
+export function setAuthToken(token: string | null): void {
+  authToken = token;
+}
+
+/** AuthContext registers itself here once — called on any 401, so an expired/invalid token clears itself and redirects to /login from one place, not from every call site. */
+export function onUnauthorized(handler: () => void): void {
+  unauthorizedHandler = handler;
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   let res: Response;
   try {
     res = await fetch(`${API_BASE}${path}`, {
       ...init,
-      headers: { "Content-Type": "application/json", ...(init?.headers ?? {}) },
+      headers: {
+        "Content-Type": "application/json",
+        ...(authToken ? { Authorization: `Bearer ${authToken}` } : {}),
+        ...(init?.headers ?? {}),
+      },
     });
   } catch {
     throw new ApiError(`Couldn't reach the registry backend at ${API_BASE} — is it running?`);
@@ -90,10 +110,37 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
   const body = await res.json().catch(() => undefined);
   if (!res.ok) {
+    if (res.status === 401) unauthorizedHandler?.();
     const message = body && typeof body.error === "string" ? body.error : `Request failed (${res.status}).`;
     throw new ApiError(message);
   }
   return body as T;
+}
+
+// ---------- Auth ----------
+
+export interface AuthUser {
+  id: string;
+  tenantId: string;
+  email: string;
+  isAdmin: boolean;
+}
+
+export interface AuthResult {
+  token: string;
+  user: AuthUser;
+}
+
+export function signup(email: string, password: string): Promise<AuthResult> {
+  return request<AuthResult>("/api/auth/signup", { method: "POST", body: JSON.stringify({ email, password }) });
+}
+
+export function login(email: string, password: string): Promise<AuthResult> {
+  return request<AuthResult>("/api/auth/login", { method: "POST", body: JSON.stringify({ email, password }) });
+}
+
+export function getCurrentUser(): Promise<AuthUser> {
+  return request<AuthUser>("/api/auth/me");
 }
 
 export function listServers(): Promise<ApiServer[]> {
@@ -278,6 +325,12 @@ export interface RunSummary {
   updatedAt: string;
 }
 
+export interface LatestReview {
+  status: string;
+  notes: string | null;
+  decidedAt: string | null;
+}
+
 export interface AgentDetail {
   agentId: string;
   agentVersionId: string;
@@ -288,6 +341,7 @@ export interface AgentDetail {
   scoreBreakdown: unknown | null;
   createdAt: string;
   runs: RunSummary[];
+  latestReview: LatestReview | null;
 }
 
 export function listAgents(): Promise<AgentSummary[]> {
@@ -298,9 +352,34 @@ export function getAgentDetail(agentId: string): Promise<AgentDetail> {
   return request<AgentDetail>(`/api/agents/${agentId}`);
 }
 
-/** Rule 7 — every agent gets an endpoint, and a real Postman collection to call it with. A plain GET href, not a fetch: the browser handles the file download via the server's own Content-Disposition header. */
-export function postmanCollectionUrl(agentVersionId: string): string {
-  return `${API_BASE}/api/agents/${agentVersionId}/postman`;
+/**
+ * Rule 7 — every agent gets an endpoint, and a real Postman collection to
+ * call it with. This is a fetch + blob download, not a plain `<a href
+ * download>`: that route now requires a session (multi-tenancy), and a
+ * bare anchor navigation can't carry an Authorization header — only a
+ * fetch (going through request(), which attaches the token) can.
+ */
+export async function downloadPostmanCollection(agentVersionId: string): Promise<void> {
+  const res = await fetch(`${API_BASE}/api/agents/${agentVersionId}/postman`, {
+    headers: authToken ? { Authorization: `Bearer ${authToken}` } : {},
+  });
+  if (res.status === 401) {
+    unauthorizedHandler?.();
+    throw new ApiError("Sign in required.");
+  }
+  if (!res.ok) {
+    const body = await res.json().catch(() => undefined);
+    throw new ApiError(body && typeof body.error === "string" ? body.error : `Request failed (${res.status}).`);
+  }
+  const disposition = res.headers.get("Content-Disposition") ?? "";
+  const filename = /filename="([^"]+)"/.exec(disposition)?.[1] ?? "agent.postman_collection.json";
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 // ---------- Publish / Admin Review ----------
@@ -331,6 +410,7 @@ export interface SanitizedManifest {
 
 export interface ReviewSubmission {
   id: string;
+  agentId: string;
   sanitizedManifest: SanitizedManifest;
   effectivenessScore: number;
   safetyScore: number;
@@ -352,4 +432,33 @@ export interface DecideResult {
 
 export function decideReviewSubmission(id: string, decision: ReviewDecision, notes?: string): Promise<DecideResult> {
   return request<DecideResult>(`/api/review-submissions/${id}/decide`, { method: "POST", body: JSON.stringify({ decision, notes }) });
+}
+
+// ---------- Marketplace ----------
+
+export interface MarketplaceListing {
+  id: string;
+  sanitizedManifest: SanitizedManifest;
+  effectivenessScore: number;
+  safetyScore: number;
+  publishedAt: string;
+}
+
+export function listMarketplace(): Promise<MarketplaceListing[]> {
+  return request<MarketplaceListing[]>("/api/marketplace");
+}
+
+/** Same sanitized shape as the list — its own page, not a richer view. */
+export function getMarketplaceListing(id: string): Promise<MarketplaceListing> {
+  return request<MarketplaceListing>(`/api/marketplace/${id}`);
+}
+
+export interface InstallResult {
+  agentId: string;
+  agentVersionId: string;
+}
+
+/** "Add to my workspace" — copies the real config (not the sanitized listing) into a brand-new agent, never a credential (there isn't one in the config to copy). */
+export function installFromMarketplace(marketplaceId: string): Promise<InstallResult> {
+  return request<InstallResult>(`/api/marketplace/${marketplaceId}/install`, { method: "POST" });
 }

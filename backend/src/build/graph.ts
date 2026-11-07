@@ -22,8 +22,7 @@ import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 // the plain `zod` (v3 API) used for request validation elsewhere (routes/).
 import { z as z4 } from "zod/v4";
 import { config } from "../config.js";
-import { getPool } from "../db.js";
-import { DEFAULT_OWNER_ID } from "../tenancy.js";
+import { withTenant, type TenantAuth } from "../db.js";
 import { ServiceError, addConnection } from "../services/registry.js";
 import type { AuthSpec } from "../authSpec.js";
 import { getCheckpointer } from "../checkpointer.js";
@@ -113,6 +112,10 @@ export interface CredentialSubmission {
 }
 
 const BuildState = Annotation.Root({
+  // Carried through the checkpointer like every other field — set once at
+  // startBuild, still present on every resume without needing to be passed
+  // again, since it's part of the persisted graph state, not a request arg.
+  auth: Annotation<TenantAuth>,
   prompt: Annotation<string>,
   parsed: Annotation<ParsedIntent | null>,
   matchedTools: Annotation<MatchedTool[]>,
@@ -229,15 +232,17 @@ async function selectToolsForRole(roleLabel: string, roleBrief: string, rows: Ca
 }
 
 async function searchRegistry(state: typeof BuildState.State): Promise<Partial<typeof BuildState.State>> {
-  const pool = getPool();
-  const { rows } = await pool.query<CatalogRow>(
-    `SELECT s.id AS mcp_server_id, s.name AS server_name, t.name AS tool_name, t.description, t.sensitivity
-     FROM mcp_tools t
-     JOIN mcp_servers s ON s.id = t.server_id
-     WHERE t.owner_id = $1
-     ORDER BY s.name, t.name`,
-    [DEFAULT_OWNER_ID]
-  );
+  const rows = await withTenant(state.auth, async (client) => {
+    const { rows } = await client.query<CatalogRow>(
+      `SELECT s.id AS mcp_server_id, s.name AS server_name, t.name AS tool_name, t.description, t.sensitivity
+       FROM mcp_tools t
+       JOIN mcp_servers s ON s.id = t.server_id
+       WHERE t.owner_id = $1
+       ORDER BY s.name, t.name`,
+      [state.auth.userId]
+    );
+    return rows;
+  });
   if (rows.length === 0 || !state.parsed) return { matchedTools: [] };
 
   if (state.parsed.graph.type === "sequential") {
@@ -283,14 +288,16 @@ async function checkConnections(state: typeof BuildState.State): Promise<Partial
   const serverIds = [...new Set(state.confirmedTools.map((t) => t.mcpServerId))];
   if (serverIds.length === 0) return { missingServers: [] };
 
-  const pool = getPool();
-  const { rows } = await pool.query<{ id: string; name: string; auth_spec: AuthSpec }>(
-    `SELECT s.id, s.name, s.auth_spec
-     FROM mcp_servers s
-     WHERE s.id = ANY($1) AND s.owner_id = $2 AND s.auth_spec IS NOT NULL
-       AND NOT EXISTS (SELECT 1 FROM connections c WHERE c.server_id = s.id AND c.owner_id = $2)`,
-    [serverIds, DEFAULT_OWNER_ID]
-  );
+  const rows = await withTenant(state.auth, async (client) => {
+    const { rows } = await client.query<{ id: string; name: string; auth_spec: AuthSpec }>(
+      `SELECT s.id, s.name, s.auth_spec
+       FROM mcp_servers s
+       WHERE s.id = ANY($1) AND s.owner_id = $2 AND s.auth_spec IS NOT NULL
+         AND NOT EXISTS (SELECT 1 FROM connections c WHERE c.server_id = s.id AND c.owner_id = $2)`,
+      [serverIds, state.auth.userId]
+    );
+    return rows;
+  });
   return { missingServers: rows.map((r) => ({ mcpServerId: r.id, serverName: r.name, authSpec: r.auth_spec })) };
 }
 
@@ -306,7 +313,7 @@ async function requestCredentials(state: typeof BuildState.State): Promise<Parti
     missingServers: state.missingServers,
   });
   for (const sub of submissions) {
-    await addConnection(sub.mcpServerId, sub.values);
+    await addConnection(state.auth, sub.mcpServerId, sub.values);
   }
   return {};
 }
@@ -361,9 +368,9 @@ function readPause(result: unknown): BuildPause {
 }
 
 /** Starts a new build thread and runs it up to the present_tools pause — always reached, per the documented graph shape. */
-export async function startBuild(threadId: string, prompt: string): Promise<BuildPause> {
+export async function startBuild(threadId: string, auth: TenantAuth, prompt: string): Promise<BuildPause> {
   const result = await getGraph().invoke(
-    { prompt, parsed: null, matchedTools: [], confirmedTools: [], missingServers: [] },
+    { auth, prompt, parsed: null, matchedTools: [], confirmedTools: [], missingServers: [] },
     { configurable: { thread_id: threadId } }
   );
   return readPause(result);

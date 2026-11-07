@@ -1,15 +1,28 @@
-import { Link } from "react-router-dom";
 import { useQuery } from "@tanstack/react-query";
 import { listAgents, ApiError } from "../lib/api";
-import { formatRelativeTime, scoreGrade } from "../lib/format";
+import { formatRelativeTime } from "../lib/format";
 import { AgentsIcon } from "../components/icons";
+import AgentGridCard, { type AgentGridTag } from "../components/AgentGridCard";
 
 function statusLabel(status: string): string {
   if (status === "published") return "live";
   return status.replace("_", " ");
 }
 
-/** Every agent this owner has ever built, newest first — one card per agent (its latest version), with a run-count/last-run summary pulled from graph_runs. Click through for the full config + run history. */
+/**
+ * Every agent this owner has ever built, newest first — one card per agent
+ * (its latest version), with a run-count/last-run summary pulled from
+ * graph_runs. Click through for the full config + run history.
+ *
+ * Isolation note (Rule 2): `GET /api/agents` already filters
+ * `WHERE owner_id = $1` server-side (services/agents.ts) — there is no
+ * unfiltered "all agents" query this page could accidentally widen. Right
+ * now that filter runs against one hardcoded owner (tenancy.ts), so it
+ * can't yet be verified against a *second* real user — but the shape is
+ * already there: swapping in the authenticated user's id needs zero query
+ * changes once real auth exists. Until then this is honestly "structurally
+ * ready," not "isolated and proven," per DESIGN-NOTES §7.
+ */
 export default function AgentsPage() {
   const agentsQuery = useQuery({ queryKey: ["agents"], queryFn: listAgents });
   const agents = agentsQuery.data ?? [];
@@ -38,28 +51,21 @@ export default function AgentsPage() {
               `${a.runCount} run${a.runCount === 1 ? "" : "s"}`,
               a.lastRunAt ? formatRelativeTime(a.lastRunAt) : "Never run",
             ].filter(Boolean);
+            const tags: AgentGridTag[] = a.serverNames.map((s) => ({ key: s, label: s.toLowerCase() }));
+            if (a.graphType === "coordinator_specialist") tags.push({ key: "multi-agent", label: "multi-agent", variant: "accent" });
             return (
-              <Link to={`/agents/${a.agentId}`} className="agent-list-card" key={a.agentId}>
-                <div className="agent-list-card-head">
-                  <span className="agent-list-card-name">{a.name}</span>
-                  <span className={`status-chip ${a.status}`}>{statusLabel(a.status)}</span>
-                </div>
-                <p className="agent-list-card-desc">{a.description}</p>
-                <div className="agent-list-card-tags">
-                  {a.serverNames.map((s) => (
-                    <span className="tag-chip" key={s}>
-                      {s.toLowerCase()}
-                    </span>
-                  ))}
-                  {a.graphType === "coordinator_specialist" && <span className="tag-chip accent">multi-agent</span>}
-                </div>
-                <div className="agent-list-card-score">
-                  <span className="score-label">Score</span>
-                  <span className="score-number">{a.effectivenessScore ?? "—"}</span>
-                  <span className="score-grade">{a.effectivenessScore !== null ? scoreGrade(a.effectivenessScore) : "C"}</span>
-                </div>
-                <div className="agent-list-card-meta">{metaParts.join(" · ")}</div>
-              </Link>
+              <AgentGridCard
+                key={a.agentId}
+                href={`/agents/${a.agentId}`}
+                name={a.name}
+                status={a.status}
+                statusLabel={statusLabel(a.status)}
+                description={a.description}
+                tags={tags}
+                effectivenessScore={a.effectivenessScore}
+                safetyScore={a.safetyScore}
+                meta={metaParts.join(" · ")}
+              />
             );
           })}
         </div>

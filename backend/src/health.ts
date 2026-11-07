@@ -13,14 +13,14 @@
 import { getPool } from "./db.js";
 import { listTools, McpDiscoveryError } from "./mcpClient.js";
 import { attachAuth } from "./authSpec.js";
-import { getConnectionAuth, touchConnectionUsage } from "./services/registry.js";
-import { DEFAULT_OWNER_ID } from "./tenancy.js";
+import { getConnectionAuth, touchConnectionUsage, listAllServersForHealthCheck } from "./services/registry.js";
 
 const CHECK_INTERVAL_MS = 60_000;
 
-async function checkOne(server: { id: string; address: string }): Promise<void> {
+async function checkOne(server: { id: string; address: string; ownerId: string; tenantId: string }): Promise<void> {
   const pool = getPool();
-  const auth = await getConnectionAuth(server.id).catch(() => null);
+  const tenantAuth = { userId: server.ownerId, tenantId: server.tenantId };
+  const auth = await getConnectionAuth(tenantAuth, server.id).catch(() => null);
   const attachment = auth ? attachAuth(auth.authSpec, auth.values) : undefined;
 
   // A connected server that comes back 401/403 is reachable — it's the
@@ -30,12 +30,12 @@ async function checkOne(server: { id: string; address: string }): Promise<void> 
   try {
     await listTools(server.address, attachment);
     status = "ok";
-    if (auth) await touchConnectionUsage(server.id, "ok");
+    if (auth) await touchConnectionUsage(tenantAuth, server.id, "ok");
   } catch (err) {
     const authRejected = auth && err instanceof McpDiscoveryError && (err.status === 401 || err.status === 403);
     if (authRejected) {
       status = "ok";
-      await touchConnectionUsage(server.id, "auth_rejected");
+      await touchConnectionUsage(tenantAuth, server.id, "auth_rejected");
     } else {
       // Never silent — 'dead' with no reason logged is undebuggable. Message
       // only (McpDiscoveryError.message never contains the credential value).
@@ -47,14 +47,12 @@ async function checkOne(server: { id: string; address: string }): Promise<void> 
 }
 
 async function checkAll(): Promise<void> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ id: string; address: string }>(
-    "SELECT id, address FROM mcp_servers WHERE owner_id = $1",
-    [DEFAULT_OWNER_ID]
-  );
+  // Spans every tenant deliberately — a background job, not a request on
+  // behalf of one logged-in user (see listAllServersForHealthCheck's doc).
+  const servers = await listAllServersForHealthCheck();
   // Sequential, not Promise.all — this is a low-frequency background job,
   // not a latency-sensitive path; no need to burst-fetch every server at once.
-  for (const server of rows) {
+  for (const server of servers) {
     await checkOne(server).catch((err) => console.error(`health check failed for ${server.id}:`, err));
   }
 }

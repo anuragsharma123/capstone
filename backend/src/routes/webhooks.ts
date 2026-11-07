@@ -6,7 +6,6 @@
 import { Router, type Request, type Response } from "express";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getPool } from "../db.js";
-import { DEFAULT_OWNER_ID } from "../tenancy.js";
 import { startAgentRun } from "../services/runner.js";
 import type { AgentConfigDoc } from "../services/builder.js";
 
@@ -54,15 +53,24 @@ function describePayload(payload: unknown): string {
 
 router.post("/api/webhooks/:agentVersionId", async (req: Request, res: Response) => {
   const pool = getPool();
-  const { rows } = await pool.query<{ config: AgentConfigDoc }>(
-    "SELECT config FROM agent_versions WHERE id = $1 AND owner_id = $2",
-    [req.params.agentVersionId, DEFAULT_OWNER_ID]
+  // No logged-in caller here — the per-agent `secret` (checked below) is the
+  // only credential a webhook sender has. So this one lookup is
+  // deliberately by primary key alone, with no owner filter to apply yet:
+  // there's no identity to filter BY until this row tells us whose agent it
+  // is. Once RLS lands (Stage B), this specific lookup is the one legitimate
+  // case that needs a bypass — you can't set app.user_id before you know
+  // whose row you're looking at.
+  const { rows } = await pool.query<{ config: AgentConfigDoc; owner_id: string; tenant_id: string }>(
+    "SELECT config, owner_id, tenant_id FROM agent_versions WHERE id = $1",
+    [req.params.agentVersionId]
   );
-  const config = rows[0]?.config;
+  const row = rows[0];
+  const config = row?.config;
   if (!config) {
     res.status(404).json({ error: "Agent version not found." });
     return;
   }
+  const auth = { userId: row.owner_id, tenantId: row.tenant_id };
   if (config.trigger.type !== "webhook" || !config.trigger.secret) {
     res.status(400).json({ error: "This agent isn't configured for webhook triggering." });
     return;
@@ -83,7 +91,7 @@ router.post("/api/webhooks/:agentVersionId", async (req: Request, res: Response)
   // later via GET /api/agents/runs/pending, not this response.
   res.status(202).json({ status: "accepted" });
 
-  startAgentRun(req.params.agentVersionId, message).catch((err) => {
+  startAgentRun(auth, req.params.agentVersionId, message).catch((err) => {
     console.error(`webhook-triggered run failed for agent version ${req.params.agentVersionId}:`, err);
   });
 });

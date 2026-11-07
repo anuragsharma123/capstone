@@ -1,13 +1,15 @@
 import { Router, type Request, type Response } from "express";
 import { buildPostmanCollection } from "../services/postman.js";
 import { ServiceError } from "../services/registry.js";
+import { requireAuth } from "../middleware.js";
 
 export const router = Router();
+router.use(requireAuth);
 
 router.get("/api/agents/:agentVersionId/postman", async (req: Request, res: Response) => {
   try {
     const baseUrl = `${req.protocol}://${req.get("host")}`;
-    const { filename, collection } = await buildPostmanCollection(req.params.agentVersionId, baseUrl);
+    const { filename, collection } = await buildPostmanCollection(req.auth!, req.params.agentVersionId, baseUrl);
     res.setHeader("Content-Disposition", `attachment; filename="${filename}"`);
     res.json(collection);
   } catch (err) {

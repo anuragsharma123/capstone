@@ -1,10 +1,9 @@
 // Business logic — routes stay thin and call these.
 import { randomUUID } from "node:crypto";
-import { getPool } from "../db.js";
+import { getPool, withTenant, type TenantAuth } from "../db.js";
 import { classifyTool } from "../classify.js";
 import { encryptToken, decryptToken } from "../crypto.js";
 import { listTools, McpDiscoveryError } from "../mcpClient.js";
-import { DEFAULT_OWNER_ID, DEFAULT_TENANT_ID } from "../tenancy.js";
 import { splitAuthValues, attachAuth, type AuthSpec } from "../authSpec.js";
 import { IMPLEMENTED_TRANSPORTS, type Transport } from "../transport.js";
 
@@ -68,101 +67,97 @@ export interface ServerOut {
   tools: ToolOut[];
 }
 
-export async function registerServer(input: ServerCreateInput): Promise<ServerOut> {
-  const pool = getPool();
-
-  const existing = await pool.query("SELECT id FROM mcp_servers WHERE owner_id = $1 AND address = $2", [
-    DEFAULT_OWNER_ID,
-    input.address,
-  ]);
-  if ((existing.rowCount ?? 0) > 0) throw new ServiceError(409, "That address is already registered.");
-
-  if (!IMPLEMENTED_TRANSPORTS.includes(input.transport)) {
-    throw new ServiceError(400, `Transport '${input.transport}' isn't implemented yet — only streamable_http is.`);
-  }
-
-  // Auth attachment for discovery only — built and discarded in this scope.
-  // Not the same thing as a stored connection: nothing here ever reaches
-  // `connections` or `storeConnection()`.
-  const discoveryAuth =
-    input.authSpec && input.discoveryValues ? attachAuth(input.authSpec, input.discoveryValues) : undefined;
-
-  let discovered;
-  try {
-    discovered = await listTools(input.address, discoveryAuth);
-  } catch (err) {
-    if (err instanceof McpDiscoveryError) throw new ServiceError(400, err.message);
-    throw err;
-  }
-
-  const serverId = randomUUID();
-  await pool.query(
-    `INSERT INTO mcp_servers (id, owner_id, tenant_id, name, transport, address, visibility, auth_spec, status, last_checked_at)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ok', now())`,
-    [
-      serverId,
-      DEFAULT_OWNER_ID,
-      DEFAULT_TENANT_ID,
-      input.name || input.address,
-      input.transport,
+export async function registerServer(auth: TenantAuth, input: ServerCreateInput): Promise<ServerOut> {
+  return withTenant(auth, async (client) => {
+    const existing = await client.query("SELECT id FROM mcp_servers WHERE owner_id = $1 AND address = $2", [
+      auth.userId,
       input.address,
-      input.visibility,
-      input.authSpec ? JSON.stringify(input.authSpec) : null,
-    ]
-  );
+    ]);
+    if ((existing.rowCount ?? 0) > 0) throw new ServiceError(409, "That address is already registered.");
 
-  for (const tool of discovered) {
-    const { sensitivity, source } = classifyTool(tool.name, tool.description, tool.annotations);
-    await pool.query(
-      `INSERT INTO mcp_tools (id, server_id, owner_id, tenant_id, name, description, sensitivity, sensitivity_source, annotations, input_schema)
-       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+    if (!IMPLEMENTED_TRANSPORTS.includes(input.transport)) {
+      throw new ServiceError(400, `Transport '${input.transport}' isn't implemented yet — only streamable_http is.`);
+    }
+
+    // Auth attachment for discovery only — built and discarded in this scope.
+    // Not the same thing as a stored connection: nothing here ever reaches
+    // `connections` or `storeConnection()`.
+    const discoveryAuth =
+      input.authSpec && input.discoveryValues ? attachAuth(input.authSpec, input.discoveryValues) : undefined;
+
+    let discovered;
+    try {
+      discovered = await listTools(input.address, discoveryAuth);
+    } catch (err) {
+      if (err instanceof McpDiscoveryError) throw new ServiceError(400, err.message);
+      throw err;
+    }
+
+    const serverId = randomUUID();
+    await client.query(
+      `INSERT INTO mcp_servers (id, owner_id, tenant_id, name, transport, address, visibility, auth_spec, status, last_checked_at)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'ok', now())`,
       [
-        randomUUID(),
         serverId,
-        DEFAULT_OWNER_ID,
-        DEFAULT_TENANT_ID,
-        tool.name,
-        tool.description ?? null,
-        sensitivity,
-        source,
-        tool.annotations ? JSON.stringify(tool.annotations) : null,
-        tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
+        auth.userId,
+        auth.tenantId,
+        input.name || input.address,
+        input.transport,
+        input.address,
+        input.visibility,
+        input.authSpec ? JSON.stringify(input.authSpec) : null,
       ]
     );
-  }
 
-  return getServerOrThrow(serverId);
+    for (const tool of discovered) {
+      const { sensitivity, source } = classifyTool(tool.name, tool.description, tool.annotations);
+      await client.query(
+        `INSERT INTO mcp_tools (id, server_id, owner_id, tenant_id, name, description, sensitivity, sensitivity_source, annotations, input_schema)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`,
+        [
+          randomUUID(),
+          serverId,
+          auth.userId,
+          auth.tenantId,
+          tool.name,
+          tool.description ?? null,
+          sensitivity,
+          source,
+          tool.annotations ? JSON.stringify(tool.annotations) : null,
+          tool.inputSchema ? JSON.stringify(tool.inputSchema) : null,
+        ]
+      );
+    }
+
+    return getServerOrThrowIn(client, auth, serverId);
+  });
 }
 
-export async function listServers(): Promise<ServerOut[]> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ id: string }>(
-    "SELECT id FROM mcp_servers WHERE owner_id = $1 ORDER BY created_at",
-    [DEFAULT_OWNER_ID]
-  );
-  const out: ServerOut[] = [];
-  for (const row of rows) out.push(await getServerOrThrow(row.id));
-  return out;
+export async function listServers(auth: TenantAuth): Promise<ServerOut[]> {
+  return withTenant(auth, async (client) => {
+    const { rows } = await client.query<{ id: string }>("SELECT id FROM mcp_servers WHERE owner_id = $1 ORDER BY created_at", [
+      auth.userId,
+    ]);
+    const out: ServerOut[] = [];
+    for (const row of rows) out.push(await getServerOrThrowIn(client, auth, row.id));
+    return out;
+  });
 }
 
-export async function deleteServer(serverId: string): Promise<void> {
-  const pool = getPool();
-  const result = await pool.query("DELETE FROM mcp_servers WHERE id = $1 AND owner_id = $2", [
-    serverId,
-    DEFAULT_OWNER_ID,
-  ]);
-  if ((result.rowCount ?? 0) === 0) throw new ServiceError(404, "Server not found.");
+export async function deleteServer(auth: TenantAuth, serverId: string): Promise<void> {
+  return withTenant(auth, async (client) => {
+    const result = await client.query("DELETE FROM mcp_servers WHERE id = $1 AND owner_id = $2", [serverId, auth.userId]);
+    if ((result.rowCount ?? 0) === 0) throw new ServiceError(404, "Server not found.");
+  });
 }
 
 /** Removes the stored credential without removing the server itself — the server just goes back to "not connected". */
-export async function removeConnection(serverId: string): Promise<ServerOut> {
-  const pool = getPool();
-  const result = await pool.query("DELETE FROM connections WHERE server_id = $1 AND owner_id = $2", [
-    serverId,
-    DEFAULT_OWNER_ID,
-  ]);
-  if ((result.rowCount ?? 0) === 0) throw new ServiceError(404, "No connection on file for that server.");
-  return getServerOrThrow(serverId);
+export async function removeConnection(auth: TenantAuth, serverId: string): Promise<ServerOut> {
+  return withTenant(auth, async (client) => {
+    const result = await client.query("DELETE FROM connections WHERE server_id = $1 AND owner_id = $2", [serverId, auth.userId]);
+    if ((result.rowCount ?? 0) === 0) throw new ServiceError(404, "No connection on file for that server.");
+    return getServerOrThrowIn(client, auth, serverId);
+  });
 }
 
 /**
@@ -170,85 +165,96 @@ export async function removeConnection(serverId: string): Promise<ServerOut> {
  * server. Same entry point the future build-time gate will call — one
  * connections table, two entry points, never at registration.
  */
-export async function addConnection(serverId: string, values: Record<string, string>): Promise<ServerOut> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ address: string; auth_spec: AuthSpec | null }>(
-    "SELECT address, auth_spec FROM mcp_servers WHERE id = $1 AND owner_id = $2",
-    [serverId, DEFAULT_OWNER_ID]
-  );
-  if (!rows[0]) throw new ServiceError(404, "Server not found.");
-  const { address, auth_spec: authSpec } = rows[0];
-  if (!authSpec) {
-    throw new ServiceError(400, "This server has no authentication defined — nothing to connect.");
-  }
+export async function addConnection(auth: TenantAuth, serverId: string, values: Record<string, string>): Promise<ServerOut> {
+  return withTenant(auth, async (client) => {
+    const { rows } = await client.query<{ address: string; auth_spec: AuthSpec | null }>(
+      "SELECT address, auth_spec FROM mcp_servers WHERE id = $1 AND owner_id = $2",
+      [serverId, auth.userId]
+    );
+    if (!rows[0]) throw new ServiceError(404, "Server not found.");
+    const { address, auth_spec: authSpec } = rows[0];
+    if (!authSpec) {
+      throw new ServiceError(400, "This server has no authentication defined — nothing to connect.");
+    }
 
-  // Verify connectivity with the submitted credential before storing
-  // anything — same discovery call registration used, now authenticated.
-  try {
-    await listTools(address, attachAuth(authSpec, values));
-  } catch (err) {
-    if (err instanceof McpDiscoveryError) throw new ServiceError(400, `Token rejected — ${err.message}`);
-    throw err;
-  }
+    // Verify connectivity with the submitted credential before storing
+    // anything — same discovery call registration used, now authenticated.
+    try {
+      await listTools(address, attachAuth(authSpec, values));
+    } catch (err) {
+      if (err instanceof McpDiscoveryError) throw new ServiceError(400, `Token rejected — ${err.message}`);
+      throw err;
+    }
 
-  await storeConnection(serverId, authSpec, values);
-  return getServerOrThrow(serverId);
+    await storeConnectionIn(client, auth, serverId, authSpec, values);
+    return getServerOrThrowIn(client, auth, serverId);
+  });
 }
 
 /** Splits values per the server's auth_spec, encrypts the secret ones, stores the rest as plain config. */
-async function storeConnection(serverId: string, authSpec: AuthSpec, values: Record<string, string>): Promise<void> {
-  const pool = getPool();
+async function storeConnectionIn(
+  client: import("pg").PoolClient,
+  auth: TenantAuth,
+  serverId: string,
+  authSpec: AuthSpec,
+  values: Record<string, string>
+): Promise<void> {
   const { secretValues, configValues } = splitAuthValues(authSpec, values);
   const { ciphertext, wrappedDek } = encryptToken(JSON.stringify(secretValues));
   const config = JSON.stringify(configValues);
 
-  const existing = await pool.query<{ id: string }>(
-    "SELECT id FROM connections WHERE owner_id = $1 AND server_id = $2",
-    [DEFAULT_OWNER_ID, serverId]
-  );
+  const existing = await client.query<{ id: string }>("SELECT id FROM connections WHERE owner_id = $1 AND server_id = $2", [
+    auth.userId,
+    serverId,
+  ]);
   if (existing.rows[0]) {
     // Reconnecting with a fresh credential clears any prior 'expired' mark
     // immediately, rather than waiting for the next health tick to notice.
-    await pool.query(
-      "UPDATE connections SET ciphertext = $1, wrapped_dek = $2, config = $3, status = 'active' WHERE id = $4",
-      [ciphertext, wrappedDek, config, existing.rows[0].id]
-    );
+    await client.query("UPDATE connections SET ciphertext = $1, wrapped_dek = $2, config = $3, status = 'active' WHERE id = $4", [
+      ciphertext,
+      wrappedDek,
+      config,
+      existing.rows[0].id,
+    ]);
   } else {
-    await pool.query(
+    await client.query(
       `INSERT INTO connections (id, owner_id, tenant_id, server_id, ciphertext, wrapped_dek, config)
        VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-      [randomUUID(), DEFAULT_OWNER_ID, DEFAULT_TENANT_ID, serverId, ciphertext, wrappedDek, config]
+      [randomUUID(), auth.userId, auth.tenantId, serverId, ciphertext, wrappedDek, config]
     );
   }
 }
 
 /**
  * Fetch → decrypt → return, for a caller that needs to make ONE authenticated
- * call right now and then drop it — currently the health checker (health.ts),
- * pinging a server that gates tools/list behind auth. Same envelope-decrypt
- * path a real tool call will use once the Run lane exists (DESIGN-NOTES
- * §2.13); this is that pattern's first real caller, not a new one.
+ * call right now and then drop it — the health checker (health.ts) and a
+ * real tool call in the Run lane (run/runtime.ts). Same envelope-decrypt
+ * path either way. `auth` here is whichever owner actually owns `serverId`
+ * — the health checker constructs it per-server since that job spans every
+ * tenant, not just one logged-in session (see health.ts).
  */
 export async function getConnectionAuth(
+  auth: TenantAuth,
   serverId: string
 ): Promise<{ authSpec: AuthSpec; values: Record<string, string> } | null> {
-  const pool = getPool();
-  const { rows } = await pool.query<{
-    auth_spec: AuthSpec | null;
-    ciphertext: Buffer;
-    wrapped_dek: Buffer;
-    config: Record<string, string> | null;
-  }>(
-    `SELECT s.auth_spec, c.ciphertext, c.wrapped_dek, c.config
-     FROM connections c JOIN mcp_servers s ON s.id = c.server_id
-     WHERE c.server_id = $1 AND c.owner_id = $2`,
-    [serverId, DEFAULT_OWNER_ID]
-  );
-  const row = rows[0];
-  if (!row || !row.auth_spec) return null;
+  return withTenant(auth, async (client) => {
+    const { rows } = await client.query<{
+      auth_spec: AuthSpec | null;
+      ciphertext: Buffer;
+      wrapped_dek: Buffer;
+      config: Record<string, string> | null;
+    }>(
+      `SELECT s.auth_spec, c.ciphertext, c.wrapped_dek, c.config
+       FROM connections c JOIN mcp_servers s ON s.id = c.server_id
+       WHERE c.server_id = $1 AND c.owner_id = $2`,
+      [serverId, auth.userId]
+    );
+    const row = rows[0];
+    if (!row || !row.auth_spec) return null;
 
-  const secretValues = JSON.parse(decryptToken(row.ciphertext, row.wrapped_dek)) as Record<string, string>;
-  return { authSpec: row.auth_spec, values: { ...secretValues, ...row.config } };
+    const secretValues = JSON.parse(decryptToken(row.ciphertext, row.wrapped_dek)) as Record<string, string>;
+    return { authSpec: row.auth_spec, values: { ...secretValues, ...row.config } };
+  });
 }
 
 /**
@@ -259,19 +265,33 @@ export async function getConnectionAuth(
  * 'expired') from a normal use (`status` stays/returns to 'active').
  * No-ops if the connection was removed since the call that triggered it.
  */
-export async function touchConnectionUsage(serverId: string, result: "ok" | "auth_rejected"): Promise<void> {
-  const pool = getPool();
-  const status = result === "auth_rejected" ? "expired" : "active";
-  await pool.query("UPDATE connections SET last_used_at = now(), status = $1 WHERE server_id = $2 AND owner_id = $3", [
-    status,
-    serverId,
-    DEFAULT_OWNER_ID,
-  ]);
+export async function touchConnectionUsage(auth: TenantAuth, serverId: string, result: "ok" | "auth_rejected"): Promise<void> {
+  return withTenant(auth, async (client) => {
+    const status = result === "auth_rejected" ? "expired" : "active";
+    await client.query("UPDATE connections SET last_used_at = now(), status = $1 WHERE server_id = $2 AND owner_id = $3", [
+      status,
+      serverId,
+      auth.userId,
+    ]);
+  });
 }
 
-async function getServerOrThrow(serverId: string): Promise<ServerOut> {
+/**
+ * Every registered server across every tenant, for the health checker only
+ * (health.ts) — a background job, not a request on behalf of one logged-in
+ * user, so it deliberately reads across the whole table rather than through
+ * withTenant(). Not exposed to any route.
+ */
+export async function listAllServersForHealthCheck(): Promise<Array<{ id: string; address: string; ownerId: string; tenantId: string }>> {
   const pool = getPool();
-  const { rows } = await pool.query<{
+  const { rows } = await pool.query<{ id: string; address: string; owner_id: string; tenant_id: string }>(
+    "SELECT id, address, owner_id, tenant_id FROM mcp_servers"
+  );
+  return rows.map((r) => ({ id: r.id, address: r.address, ownerId: r.owner_id, tenantId: r.tenant_id }));
+}
+
+async function getServerOrThrowIn(client: import("pg").PoolClient, auth: TenantAuth, serverId: string): Promise<ServerOut> {
+  const { rows } = await client.query<{
     id: string;
     name: string;
     transport: string;
@@ -283,29 +303,23 @@ async function getServerOrThrow(serverId: string): Promise<ServerOut> {
     created_at: Date;
   }>(
     "SELECT id, name, transport, address, visibility, auth_spec, status, last_checked_at, created_at FROM mcp_servers WHERE id = $1 AND owner_id = $2",
-    [serverId, DEFAULT_OWNER_ID]
+    [serverId, auth.userId]
   );
   const server = rows[0];
   if (!server) throw new ServiceError(404, "Server not found.");
 
-  const { rows: tools } = await pool.query<{
+  const { rows: tools } = await client.query<{
     name: string;
     description: string | null;
     sensitivity: string;
     sensitivity_source: string;
-  }>(
-    "SELECT name, description, sensitivity, sensitivity_source FROM mcp_tools WHERE server_id = $1 ORDER BY name",
-    [serverId]
-  );
+  }>("SELECT name, description, sensitivity, sensitivity_source FROM mcp_tools WHERE server_id = $1 ORDER BY name", [serverId]);
 
-  const { rows: connRows } = await pool.query<{
+  const { rows: connRows } = await client.query<{
     created_at: Date;
     last_used_at: Date | null;
     status: string;
-  }>("SELECT created_at, last_used_at, status FROM connections WHERE owner_id = $1 AND server_id = $2", [
-    DEFAULT_OWNER_ID,
-    serverId,
-  ]);
+  }>("SELECT created_at, last_used_at, status FROM connections WHERE owner_id = $1 AND server_id = $2", [auth.userId, serverId]);
   const connection = connRows[0];
 
   return {

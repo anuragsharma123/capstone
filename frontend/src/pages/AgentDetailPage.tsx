@@ -1,19 +1,26 @@
 import { Link, useParams } from "react-router-dom";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { getAgentDetail, postmanCollectionUrl, publishAgentVersion, API_BASE, ApiError } from "../lib/api";
+import { getAgentDetail, downloadPostmanCollection, publishAgentVersion, API_BASE, ApiError, type LatestReview } from "../lib/api";
 import { formatShortDate, formatRelativeTime } from "../lib/format";
 import AgentCard from "../components/build/AgentCard";
 import AgentPlayground from "../components/AgentPlayground";
 
 // agent_versions.status only ever holds 'draft' | 'in_review' | 'published' —
 // a review decision that isn't 'approved' reverts the version straight back
-// to 'draft' (services/review.ts), it doesn't have its own status here. The
-// review_submissions row keeps the real decision; the Admin Review page is
-// where that's visible.
+// to 'draft', it doesn't have its own status here (services/review.ts).
+// `latestReview` (services/agents.ts, a join through review_submissions)
+// is what makes "sends it back to the author with notes" actually true
+// from the author's side — without it the notes exist only in the DB.
 function publishStatusNote(status: string): string | null {
   if (status === "in_review") return "Submitted — waiting on Admin Review.";
   if (status === "published") return "Published — live in the Marketplace.";
   return null;
+}
+
+function reviewDecisionLabel(status: string): string {
+  if (status === "changes_requested") return "Changes requested";
+  if (status === "rejected") return "Rejected";
+  return status.replace("_", " ");
 }
 
 function runStatusLabel(status: string): string {
@@ -46,6 +53,10 @@ export default function AgentDetailPage() {
   if (!detail) return null;
 
   const statusNote = publishStatusNote(detail.status);
+  const showDecisionNotice: LatestReview | null =
+    detail.status === "draft" && detail.latestReview && ["changes_requested", "rejected"].includes(detail.latestReview.status)
+      ? detail.latestReview
+      : null;
 
   return (
     <>
@@ -74,6 +85,13 @@ export default function AgentDetailPage() {
           <h3>Publish</h3>
         </div>
         <div className="panel-body">
+          {showDecisionNotice && (
+            <div className="review-decision-notice">
+              <strong>{reviewDecisionLabel(showDecisionNotice.status)}</strong>
+              {showDecisionNotice.decidedAt && <span className="muted-cell"> · {formatRelativeTime(showDecisionNotice.decidedAt)}</span>}
+              {showDecisionNotice.notes && <p>{showDecisionNotice.notes}</p>}
+            </div>
+          )}
           {detail.status === "draft" ? (
             <>
               <p className="agent-description">
@@ -97,9 +115,9 @@ export default function AgentDetailPage() {
       <section className="panel" style={{ marginTop: 20 }}>
         <div className="panel-head">
           <h3>API</h3>
-          <a href={postmanCollectionUrl(detail.agentVersionId)} className="connect-link" download>
+          <button type="button" className="connect-link" onClick={() => downloadPostmanCollection(detail.agentVersionId)}>
             Download Postman Collection
-          </a>
+          </button>
         </div>
         <div className="panel-body">
           <p className="agent-description">Call this agent directly — no browser needed. The collection also includes the resume-a-paused-run request, and a webhook example if this agent is webhook-triggered.</p>

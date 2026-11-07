@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { listReviewSubmissions, decideReviewSubmission, ApiError, type ReviewDecision, type ReviewSubmission } from "../lib/api";
 import { formatRelativeTime } from "../lib/format";
 import { ReviewIcon } from "../components/icons";
+import AgentGridCard, { type AgentGridTag } from "../components/AgentGridCard";
 
 const SUBMISSIONS_KEY = ["review-submissions"] as const;
 
@@ -16,7 +17,8 @@ function isDecidable(status: string): boolean {
  * this prototype, see DESIGN-NOTES §2.14/§7). Once real multi-tenancy
  * lands, this page gets gated to an admin role; until then anyone who can
  * reach the app can review, which is the only thing "review" can mean with
- * a single owner.
+ * a single owner. Cards link to `/agents/:agentId` (unlike Marketplace) —
+ * a reviewer needs to see the real agent, not just its sanitized manifest.
  */
 export default function AdminReviewPage() {
   const queryClient = useQueryClient();
@@ -55,7 +57,7 @@ export default function AdminReviewPage() {
               Nothing submitted yet — publish an agent from its detail page to see it here.
             </div>
           ) : (
-            <div className="review-list">
+            <div className="agent-grid">
               {submissions.map((s) => (
                 <ReviewCard
                   key={s.id}
@@ -89,52 +91,44 @@ function ReviewCard({
 }) {
   const m = submission.sanitizedManifest;
   const decidable = isDecidable(submission.status);
+  const tags: AgentGridTag[] = m.capabilities.map((c) => ({ key: c.toolName, label: c.toolName, variant: c.sensitivity as AgentGridTag["variant"] }));
 
   return (
-    <div className="review-card">
-      <div className="review-card-head">
-        <span className="review-card-name">{m.name}</span>
-        <span className={`status-chip ${submission.status}`}>{submission.status.replace("_", " ")}</span>
-      </div>
-      <p className="agent-description">{m.description}</p>
-      <div className="agent-list-card-tags">
-        {m.capabilities.map((c) => (
-          <span className={`sev-chip ${c.sensitivity}`} key={c.toolName}>
-            {c.toolName}
-          </span>
-        ))}
-        {m.capabilities.length === 0 && <span className="tag-chip">no tools</span>}
-      </div>
-      <div className="review-card-scores">
-        <span>Effectiveness {submission.effectivenessScore}/100</span>
-        <span>Safety {submission.safetyScore}/100</span>
-        <span className="muted-cell">Priority {submission.priority}</span>
-        <span className="muted-cell">{formatRelativeTime(submission.submittedAt)}</span>
-      </div>
-
-      {decidable ? (
-        <div className="review-card-actions">
-          <textarea
-            className="review-notes"
-            placeholder="Notes for the submitter (optional)…"
-            value={notes}
-            onChange={(e) => onNotesChange(e.target.value)}
-          />
-          <div className="review-card-buttons">
-            <button type="button" className="primary" onClick={() => onDecide("approved")} disabled={pending}>
-              Approve
-            </button>
-            <button type="button" onClick={() => onDecide("changes_requested")} disabled={pending}>
-              Request changes
-            </button>
-            <button type="button" className="danger" onClick={() => onDecide("rejected")} disabled={pending}>
-              Reject
-            </button>
+    <AgentGridCard
+      href={`/agents/${submission.agentId}`}
+      name={m.name}
+      status={submission.status}
+      statusLabel={submission.status.replace("_", " ")}
+      description={m.description}
+      tags={tags}
+      effectivenessScore={submission.effectivenessScore}
+      safetyScore={submission.safetyScore}
+      meta={`priority ${submission.priority} · submitted ${formatRelativeTime(submission.submittedAt)}`}
+      actions={
+        decidable ? (
+          <div className="review-card-actions">
+            <textarea
+              className="review-notes"
+              placeholder="Notes for the submitter (optional)…"
+              value={notes}
+              onChange={(e) => onNotesChange(e.target.value)}
+            />
+            <div className="review-card-buttons">
+              <button type="button" className="primary" onClick={() => onDecide("approved")} disabled={pending}>
+                Approve
+              </button>
+              <button type="button" onClick={() => onDecide("changes_requested")} disabled={pending}>
+                Request changes
+              </button>
+              <button type="button" className="danger" onClick={() => onDecide("rejected")} disabled={pending}>
+                Reject
+              </button>
+            </div>
           </div>
-        </div>
-      ) : (
-        <p className="muted-cell">Decided — {submission.status.replace("_", " ")}.</p>
-      )}
-    </div>
+        ) : (
+          <p className="muted-cell">Decided — {submission.status.replace("_", " ")}.</p>
+        )
+      }
+    />
   );
 }

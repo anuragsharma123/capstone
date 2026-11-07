@@ -2,8 +2,7 @@
 // graph_runs row (kind='playground'), same table the Build Orchestrator
 // uses (data-model.html: "each keyed to a LangGraph thread_id").
 import { randomUUID } from "node:crypto";
-import { getPool } from "../db.js";
-import { DEFAULT_OWNER_ID, DEFAULT_TENANT_ID } from "../tenancy.js";
+import { withTenant, type TenantAuth } from "../db.js";
 import { startRun, resumeRun, type RunPaused, type RunFinished } from "../run/runtime.js";
 import type { AgentConfigDoc } from "./builder.js";
 import { ServiceError } from "./registry.js";
@@ -13,11 +12,12 @@ import type { Decision } from "langchain";
 export type RunStartResult = (RunPaused | RunFinished) & { threadId: string };
 export type RunResumeResult = RunPaused | RunFinished;
 
-async function loadConfig(agentVersionId: string): Promise<AgentConfigDoc> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ config: AgentConfigDoc }>(
-    "SELECT config FROM agent_versions WHERE id = $1 AND owner_id = $2",
-    [agentVersionId, DEFAULT_OWNER_ID]
+async function loadConfig(auth: TenantAuth, agentVersionId: string): Promise<AgentConfigDoc> {
+  const { rows } = await withTenant(auth, (client) =>
+    client.query<{ config: AgentConfigDoc }>("SELECT config FROM agent_versions WHERE id = $1 AND owner_id = $2", [
+      agentVersionId,
+      auth.userId,
+    ])
   );
   if (!rows[0]) throw new ServiceError(404, "Agent version not found.");
   return rows[0].config;
@@ -30,69 +30,78 @@ async function loadConfig(agentVersionId: string): Promise<AgentConfigDoc> {
 // completed run (not still paused on approval) is a reasonable proxy for
 // "this agent works" without redefining what the rubric measures — the
 // Publish gate below still independently re-checks the threshold.
-async function scoreAndPersist(agentVersionId: string, config: AgentConfigDoc): Promise<void> {
+async function scoreAndPersist(auth: TenantAuth, agentVersionId: string, config: AgentConfigDoc): Promise<void> {
   const { effectiveness, safety, breakdown } = score(config);
-  const pool = getPool();
-  await pool.query("UPDATE agent_versions SET effectiveness_score = $1, safety_score = $2, score_breakdown = $3 WHERE id = $4", [
-    effectiveness,
-    safety,
-    JSON.stringify(breakdown),
-    agentVersionId,
-  ]);
+  await withTenant(auth, (client) =>
+    client.query("UPDATE agent_versions SET effectiveness_score = $1, safety_score = $2, score_breakdown = $3 WHERE id = $4", [
+      effectiveness,
+      safety,
+      JSON.stringify(breakdown),
+      agentVersionId,
+    ])
+  );
 }
 
-export async function startAgentRun(agentVersionId: string, message: string): Promise<RunStartResult> {
-  const config = await loadConfig(agentVersionId);
+/**
+ * `auth` is whoever owns `agentVersionId` — for a Playground call that's
+ * `req.auth` from a real session; for a webhook-triggered run
+ * (routes/webhooks.ts) there's no logged-in caller, so it's derived from
+ * the agent_version row's own owner_id/tenant_id instead. Either way the
+ * run is scoped to the agent's real owner, never a guessed identity.
+ */
+export async function startAgentRun(auth: TenantAuth, agentVersionId: string, message: string): Promise<RunStartResult> {
+  const config = await loadConfig(auth, agentVersionId);
   const threadId = randomUUID();
-  const result = await startRun(threadId, config, message);
+  const result = await startRun(auth, threadId, config, message);
 
-  const pool = getPool();
-  await pool.query(
-    `INSERT INTO graph_runs (id, owner_id, tenant_id, agent_version_id, kind, thread_id, status, interrupt_kind, interrupt_payload, result, trigger_message)
-     VALUES ($1, $2, $3, $4, 'playground', $5, $6, $7, $8, $9, $10)`,
-    [
-      randomUUID(),
-      DEFAULT_OWNER_ID,
-      DEFAULT_TENANT_ID,
-      agentVersionId,
-      threadId,
-      result.status === "interrupted" ? "interrupted" : "completed",
-      result.status === "interrupted" ? "await_approval" : null,
-      result.status === "interrupted" ? JSON.stringify(result) : null,
-      result.status === "completed" ? JSON.stringify({ output: result.output }) : null,
-      message,
-    ]
+  await withTenant(auth, (client) =>
+    client.query(
+      `INSERT INTO graph_runs (id, owner_id, tenant_id, agent_version_id, kind, thread_id, status, interrupt_kind, interrupt_payload, result, trigger_message)
+       VALUES ($1, $2, $3, $4, 'playground', $5, $6, $7, $8, $9, $10)`,
+      [
+        randomUUID(),
+        auth.userId,
+        auth.tenantId,
+        agentVersionId,
+        threadId,
+        result.status === "interrupted" ? "interrupted" : "completed",
+        result.status === "interrupted" ? "await_approval" : null,
+        result.status === "interrupted" ? JSON.stringify(result) : null,
+        result.status === "completed" ? JSON.stringify({ output: result.output }) : null,
+        message,
+      ]
+    )
   );
 
-  if (result.status === "completed") await scoreAndPersist(agentVersionId, config);
+  if (result.status === "completed") await scoreAndPersist(auth, agentVersionId, config);
 
   return { ...result, threadId };
 }
 
-export async function resumeAgentRun(threadId: string, decisions: Decision[]): Promise<RunResumeResult> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ id: string; agent_version_id: string }>(
-    "SELECT id, agent_version_id FROM graph_runs WHERE thread_id = $1 AND owner_id = $2 AND status = 'interrupted' AND kind = 'playground'",
-    [threadId, DEFAULT_OWNER_ID]
+export async function resumeAgentRun(auth: TenantAuth, threadId: string, decisions: Decision[]): Promise<RunResumeResult> {
+  const { rows } = await withTenant(auth, (client) =>
+    client.query<{ id: string; agent_version_id: string }>(
+      "SELECT id, agent_version_id FROM graph_runs WHERE thread_id = $1 AND owner_id = $2 AND status = 'interrupted' AND kind = 'playground'",
+      [threadId, auth.userId]
+    )
   );
   const run = rows[0];
   if (!run) throw new ServiceError(404, "No paused run found for that thread.");
 
-  const config = await loadConfig(run.agent_version_id);
-  const result = await resumeRun(threadId, config, decisions);
+  const config = await loadConfig(auth, run.agent_version_id);
+  const result = await resumeRun(auth, threadId, config, decisions);
 
-  await pool.query(
-    `UPDATE graph_runs SET status = $1, interrupt_kind = $2, interrupt_payload = $3, result = $4, updated_at = now() WHERE id = $5`,
-    [
+  await withTenant(auth, (client) =>
+    client.query(`UPDATE graph_runs SET status = $1, interrupt_kind = $2, interrupt_payload = $3, result = $4, updated_at = now() WHERE id = $5`, [
       result.status === "interrupted" ? "interrupted" : "completed",
       result.status === "interrupted" ? "await_approval" : null,
       result.status === "interrupted" ? JSON.stringify(result) : null,
       result.status === "completed" ? JSON.stringify({ output: result.output }) : null,
       run.id,
-    ]
+    ])
   );
 
-  if (result.status === "completed") await scoreAndPersist(run.agent_version_id, config);
+  if (result.status === "completed") await scoreAndPersist(auth, run.agent_version_id, config);
 
   return result;
 }
@@ -108,18 +117,19 @@ export interface RunDetail {
 }
 
 /** One run's full state, regardless of whether it's still pending or long finished — how a webhook-triggered run gets reviewed after the fact, since nothing was watching it synchronously. */
-export async function getRunDetail(threadId: string): Promise<RunDetail> {
-  const pool = getPool();
-  const { rows } = await pool.query<{
-    agent_version_id: string;
-    status: string;
-    trigger_message: string | null;
-    interrupt_payload: { hitlRequest?: unknown } | null;
-    result: { output?: string } | null;
-    updated_at: Date;
-  }>(
-    "SELECT agent_version_id, status, trigger_message, interrupt_payload, result, updated_at FROM graph_runs WHERE thread_id = $1 AND owner_id = $2 AND kind = 'playground'",
-    [threadId, DEFAULT_OWNER_ID]
+export async function getRunDetail(auth: TenantAuth, threadId: string): Promise<RunDetail> {
+  const { rows } = await withTenant(auth, (client) =>
+    client.query<{
+      agent_version_id: string;
+      status: string;
+      trigger_message: string | null;
+      interrupt_payload: { hitlRequest?: unknown } | null;
+      result: { output?: string } | null;
+      updated_at: Date;
+    }>(
+      "SELECT agent_version_id, status, trigger_message, interrupt_payload, result, updated_at FROM graph_runs WHERE thread_id = $1 AND owner_id = $2 AND kind = 'playground'",
+      [threadId, auth.userId]
+    )
   );
   const row = rows[0];
   if (!row) throw new ServiceError(404, "No run found for that thread.");
@@ -150,23 +160,24 @@ export interface PendingApproval {
  * sit in graph_runs, undiscoverable. Manual Playground runs show up here
  * too; there's one interrupted-run queue, not two.
  */
-export async function listPendingApprovals(): Promise<PendingApproval[]> {
-  const pool = getPool();
-  const { rows } = await pool.query<{
-    thread_id: string;
-    agent_version_id: string;
-    agent_id: string;
-    agent_name: string;
-    interrupt_payload: unknown;
-    updated_at: Date;
-  }>(
-    `SELECT gr.thread_id, gr.agent_version_id, a.id AS agent_id, a.name AS agent_name, gr.interrupt_payload, gr.updated_at
-     FROM graph_runs gr
-     JOIN agent_versions av ON av.id = gr.agent_version_id
-     JOIN agents a ON a.id = av.agent_id
-     WHERE gr.owner_id = $1 AND gr.kind = 'playground' AND gr.status = 'interrupted'
-     ORDER BY gr.updated_at`,
-    [DEFAULT_OWNER_ID]
+export async function listPendingApprovals(auth: TenantAuth): Promise<PendingApproval[]> {
+  const { rows } = await withTenant(auth, (client) =>
+    client.query<{
+      thread_id: string;
+      agent_version_id: string;
+      agent_id: string;
+      agent_name: string;
+      interrupt_payload: unknown;
+      updated_at: Date;
+    }>(
+      `SELECT gr.thread_id, gr.agent_version_id, a.id AS agent_id, a.name AS agent_name, gr.interrupt_payload, gr.updated_at
+       FROM graph_runs gr
+       JOIN agent_versions av ON av.id = gr.agent_version_id
+       JOIN agents a ON a.id = av.agent_id
+       WHERE gr.owner_id = $1 AND gr.kind = 'playground' AND gr.status = 'interrupted'
+       ORDER BY gr.updated_at`,
+      [auth.userId]
+    )
   );
   return rows.map((r) => ({
     threadId: r.thread_id,

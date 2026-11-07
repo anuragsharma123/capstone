@@ -106,12 +106,3 @@ export function ReviewIcon() {
     </svg>
   );
 }
-
-export function ComingSoonIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden="true">
-      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth="1.4" />
-      <path d="M12 7 V12 L15.5 14" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  );
-}

@@ -35,6 +35,11 @@ const EnvSchema = z.object({
   // LLM call in the platform so far. Per root CLAUDE.md, claude-sonnet-5 is
   // this project's default model.
   ANTHROPIC_API_KEY: z.string().min(1, "ANTHROPIC_API_KEY is required for the Agent Builder's parse_intent step."),
+
+  // Signs/verifies login sessions (src/auth.ts). Same "one secret in an env
+  // var" floor as KMS_MASTER_KEY (§2.6) — a real requirement (Rule 2), not
+  // a mandate for a specific token format beyond "signed, not guessable."
+  JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters. Generate one with: node -e \"console.log(require('crypto').randomBytes(32).toString('hex'))\""),
 });
 
 function loadConfig() {

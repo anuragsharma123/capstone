@@ -25,3 +25,7 @@ export function scoreGrade(effectiveness: number): string {
   if (effectiveness >= 60) return "D";
   return "F";
 }
+
+export function graphLabel(graphType: string): string {
+  return graphType === "coordinator_specialist" ? "Multi-agent" : "Sequential";
+}

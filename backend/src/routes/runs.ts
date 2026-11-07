@@ -2,8 +2,10 @@ import { Router, type Request, type Response } from "express";
 import { z } from "zod";
 import { startAgentRun, resumeAgentRun, listPendingApprovals, getRunDetail } from "../services/runner.js";
 import { ServiceError } from "../services/registry.js";
+import { requireAuth } from "../middleware.js";
 
 export const router = Router();
+router.use(requireAuth);
 
 const StartRunSchema = z.object({ message: z.string().min(1) }).strict();
 
@@ -29,16 +31,16 @@ router.post("/api/agents/:agentVersionId/run", async (req: Request, res: Respons
     return;
   }
   try {
-    const result = await startAgentRun(req.params.agentVersionId, parsed.data.message);
+    const result = await startAgentRun(req.auth!, req.params.agentVersionId, parsed.data.message);
     res.status(result.status === "completed" ? 200 : 202).json(result);
   } catch (err) {
     handleServiceError(err, res);
   }
 });
 
-router.get("/api/agents/runs/pending", async (_req: Request, res: Response) => {
+router.get("/api/agents/runs/pending", async (req: Request, res: Response) => {
   try {
-    res.json(await listPendingApprovals());
+    res.json(await listPendingApprovals(req.auth!));
   } catch (err) {
     handleServiceError(err, res);
   }
@@ -46,7 +48,7 @@ router.get("/api/agents/runs/pending", async (_req: Request, res: Response) => {
 
 router.get("/api/agents/runs/:threadId", async (req: Request, res: Response) => {
   try {
-    res.json(await getRunDetail(req.params.threadId));
+    res.json(await getRunDetail(req.auth!, req.params.threadId));
   } catch (err) {
     handleServiceError(err, res);
   }
@@ -59,7 +61,7 @@ router.post("/api/agents/runs/:threadId/resume", async (req: Request, res: Respo
     return;
   }
   try {
-    const result = await resumeAgentRun(req.params.threadId, parsed.data.decisions);
+    const result = await resumeAgentRun(req.auth!, req.params.threadId, parsed.data.decisions);
     res.status(result.status === "completed" ? 200 : 202).json(result);
   } catch (err) {
     handleServiceError(err, res);

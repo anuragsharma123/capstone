@@ -4,8 +4,7 @@
 // to an external caller who isn't reading this codebase. This module turns
 // one agent's config into a real, importable Postman Collection v2.1 doc —
 // no placeholder screenshots, an actual file Postman can open and run.
-import { getPool } from "../db.js";
-import { DEFAULT_OWNER_ID } from "../tenancy.js";
+import { withTenant, type TenantAuth } from "../db.js";
 import { ServiceError } from "./registry.js";
 import type { AgentConfigDoc } from "./builder.js";
 
@@ -22,20 +21,31 @@ export interface PostmanCollectionResult {
   collection: Record<string, unknown>;
 }
 
-export async function buildPostmanCollection(agentVersionId: string, baseUrl: string): Promise<PostmanCollectionResult> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ config: AgentConfigDoc }>(
-    "SELECT config FROM agent_versions WHERE id = $1 AND owner_id = $2",
-    [agentVersionId, DEFAULT_OWNER_ID]
+export async function buildPostmanCollection(auth: TenantAuth, agentVersionId: string, baseUrl: string): Promise<PostmanCollectionResult> {
+  const { rows } = await withTenant(auth, (client) =>
+    client.query<{ config: AgentConfigDoc }>("SELECT config FROM agent_versions WHERE id = $1 AND owner_id = $2", [agentVersionId, auth.userId])
   );
   const config = rows[0]?.config;
   if (!config) throw new ServiceError(404, "Agent version not found.");
+
+  const authHeader = { key: "Authorization", value: "Bearer {{token}}" };
+
+  const loginItem = {
+    name: "Log in (get a token)",
+    request: {
+      method: "POST",
+      header: [{ key: "Content-Type", value: "application/json" }],
+      url: "{{baseUrl}}/api/auth/login",
+      body: jsonBody({ email: "you@example.com", password: "your-password" }),
+      description: "Returns { token, user }. Copy the token into the {{token}} variable — every other request in this collection needs it.",
+    },
+  };
 
   const runItem = {
     name: "Run agent",
     request: {
       method: "POST",
-      header: [{ key: "Content-Type", value: "application/json" }],
+      header: [{ key: "Content-Type", value: "application/json" }, authHeader],
       url: "{{baseUrl}}/api/agents/{{agentVersionId}}/run",
       body: jsonBody({ message: "Ask the agent to do something." }),
       description:
@@ -50,7 +60,7 @@ export async function buildPostmanCollection(agentVersionId: string, baseUrl: st
     name: "Resume a paused run (approve / reject)",
     request: {
       method: "POST",
-      header: [{ key: "Content-Type", value: "application/json" }],
+      header: [{ key: "Content-Type", value: "application/json" }, authHeader],
       url: "{{baseUrl}}/api/agents/runs/{{threadId}}/resume",
       body: jsonBody({ decisions: [{ type: "approve" }] }),
       description: "Only valid while {{threadId}} is a run currently paused on an approval gate. Set decisions[].type to 'reject' to decline instead.",
@@ -93,9 +103,10 @@ export async function buildPostmanCollection(agentVersionId: string, baseUrl: st
     variable: [
       { key: "baseUrl", value: baseUrl },
       { key: "agentVersionId", value: agentVersionId },
+      { key: "token", value: "", description: "From the Log in request's response." },
       { key: "threadId", value: "", description: "Filled in from a Run response once it pauses for approval." },
     ],
-    item: [runItem, resumeItem, ...(webhookItem ? [webhookItem] : [])],
+    item: [loginItem, runItem, resumeItem, ...(webhookItem ? [webhookItem] : [])],
   };
 
   return { filename: slugFilename(config.name), collection };

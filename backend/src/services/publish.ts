@@ -6,8 +6,7 @@
 // on an existing version, not a continuation of that graph's thread. See
 // DESIGN-NOTES §7 for why this is a deliberate simplification, not a gap.
 import { randomUUID } from "node:crypto";
-import { getPool } from "../db.js";
-import { DEFAULT_OWNER_ID, DEFAULT_TENANT_ID } from "../tenancy.js";
+import { withTenant, type TenantAuth } from "../db.js";
 import { ServiceError } from "./registry.js";
 import { score } from "./scoring.js";
 import { sanitize } from "./sanitizer.js";
@@ -23,48 +22,49 @@ export interface PublishResult {
   safety: number;
 }
 
-export async function publishAgentVersion(agentVersionId: string): Promise<PublishResult> {
-  const pool = getPool();
-  const { rows } = await pool.query<{ config: AgentConfigDoc }>(
-    "SELECT config FROM agent_versions WHERE id = $1 AND owner_id = $2",
-    [agentVersionId, DEFAULT_OWNER_ID]
-  );
-  const config = rows[0]?.config;
-  if (!config) throw new ServiceError(404, "Agent version not found.");
+export async function publishAgentVersion(auth: TenantAuth, agentVersionId: string): Promise<PublishResult> {
+  return withTenant(auth, async (client) => {
+    const { rows } = await client.query<{ config: AgentConfigDoc }>("SELECT config FROM agent_versions WHERE id = $1 AND owner_id = $2", [
+      agentVersionId,
+      auth.userId,
+    ]);
+    const config = rows[0]?.config;
+    if (!config) throw new ServiceError(404, "Agent version not found.");
 
-  const { effectiveness, safety, breakdown } = score(config);
-  if (effectiveness < EFFECTIVENESS_THRESHOLD || safety < SAFETY_THRESHOLD) {
-    throw new ServiceError(
-      400,
-      `Publish blocked — effectiveness ${effectiveness}/100 (need ≥${EFFECTIVENESS_THRESHOLD}), safety ${safety}/100 (need ≥${SAFETY_THRESHOLD}).`
+    const { effectiveness, safety, breakdown } = score(config);
+    if (effectiveness < EFFECTIVENESS_THRESHOLD || safety < SAFETY_THRESHOLD) {
+      throw new ServiceError(
+        400,
+        `Publish blocked — effectiveness ${effectiveness}/100 (need ≥${EFFECTIVENESS_THRESHOLD}), safety ${safety}/100 (need ≥${SAFETY_THRESHOLD}).`
+      );
+    }
+
+    await client.query("UPDATE agent_versions SET effectiveness_score = $1, safety_score = $2, score_breakdown = $3, status = 'in_review' WHERE id = $4", [
+      effectiveness,
+      safety,
+      JSON.stringify(breakdown),
+      agentVersionId,
+    ]);
+
+    // graph_runs row of kind='review' — an audit trail / FK anchor for
+    // review_submissions to point back at a tenant, not a live LangGraph
+    // thread (nothing is actually paused here).
+    const graphRunId = randomUUID();
+    await client.query(
+      `INSERT INTO graph_runs (id, owner_id, tenant_id, agent_version_id, kind, thread_id, status)
+       VALUES ($1, $2, $3, $4, 'review', $5, 'completed')`,
+      [graphRunId, auth.userId, auth.tenantId, agentVersionId, randomUUID()]
     );
-  }
 
-  await pool.query("UPDATE agent_versions SET effectiveness_score = $1, safety_score = $2, score_breakdown = $3, status = 'in_review' WHERE id = $4", [
-    effectiveness,
-    safety,
-    JSON.stringify(breakdown),
-    agentVersionId,
-  ]);
+    const manifest = sanitize(config);
+    const submissionId = randomUUID();
+    const priority = manifest.capabilities.some((c) => c.sensitivity === "destructive") ? 10 : 100;
+    await client.query(
+      `INSERT INTO review_submissions (id, graph_run_id, sanitized_manifest, effectiveness_score, safety_score, score_breakdown, priority)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [submissionId, graphRunId, JSON.stringify(manifest), effectiveness, safety, JSON.stringify(breakdown), priority]
+    );
 
-  // graph_runs row of kind='review' — an audit trail / FK anchor for
-  // review_submissions to point back at a tenant, not a live LangGraph
-  // thread (nothing is actually paused here).
-  const graphRunId = randomUUID();
-  await pool.query(
-    `INSERT INTO graph_runs (id, owner_id, tenant_id, agent_version_id, kind, thread_id, status)
-     VALUES ($1, $2, $3, $4, 'review', $5, 'completed')`,
-    [graphRunId, DEFAULT_OWNER_ID, DEFAULT_TENANT_ID, agentVersionId, randomUUID()]
-  );
-
-  const manifest = sanitize(config);
-  const submissionId = randomUUID();
-  const priority = manifest.capabilities.some((c) => c.sensitivity === "destructive") ? 10 : 100;
-  await pool.query(
-    `INSERT INTO review_submissions (id, graph_run_id, sanitized_manifest, effectiveness_score, safety_score, score_breakdown, priority)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [submissionId, graphRunId, JSON.stringify(manifest), effectiveness, safety, JSON.stringify(breakdown), priority]
-  );
-
-  return { reviewSubmissionId: submissionId, status: "pending", effectiveness, safety };
+    return { reviewSubmissionId: submissionId, status: "pending" as const, effectiveness, safety };
+  });
 }
